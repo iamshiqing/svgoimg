@@ -1,0 +1,14 @@
+﻿<svg width="220" height="140" viewBox="0 0 220 140" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="220" height="140" fill="#f8fafc"/>
+
+  <g transform="translate(110 70) rotate(-12) scale(1.1 0.95)">
+    <path d="M-70 0 C-48 -44, 48 -44, 70 0 C48 44, -48 44, -70 0 Z" fill="#bfdbfe" stroke="#1d4ed8" stroke-width="4"/>
+    <g transform="rotate(38) skewX(8)">
+      <path d="M-46 -10 L46 -10 A10 10 0 0 1 46 10 L-46 10 A10 10 0 0 1 -46 -10 Z" fill="#22d3ee" opacity="0.75"/>
+      <path d="M-52 0 H52" fill="none" stroke="#0f172a" stroke-width="3"/>
+    </g>
+    <g transform="matrix(1 0.22 -0.18 1 -8 14)">
+      <polyline points="-30,0 -18,-14 -6,0 6,-14 18,0 30,-14" fill="none" stroke="#ef4444" stroke-width="3.2"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,24 @@
+﻿<svg width="240" height="140" viewBox="0 0 240 140" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="night" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <radialGradient id="orb" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#60a5fa"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="240" height="140" fill="url(#night)"/>
+  <ellipse cx="78" cy="70" rx="70" ry="36" fill="#22d3ee" opacity="0.28"/>
+  <ellipse cx="122" cy="66" rx="64" ry="30" fill="#a78bfa" opacity="0.24"/>
+  <ellipse cx="160" cy="72" rx="56" ry="28" fill="#f472b6" opacity="0.22"/>
+
+  <g transform="translate(176 36) rotate(10)">
+    <circle cx="0" cy="0" r="18" fill="url(#orb)" opacity="0.92"/>
+    <path d="M-10 22 C-6 14, 6 14, 10 22" fill="none" stroke="#e2e8f0" stroke-width="2.5"/>
+  </g>
+
+  <path d="M20 118 C56 88, 90 90, 126 118 S190 146, 224 116" fill="none" stroke="#38bdf8" stroke-width="5" opacity="0.85"/>
+</svg>

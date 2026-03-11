@@ -100,7 +100,8 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 				return fmt.Errorf("%s transform: %w", name, err)
 			}
 		} else {
-			transform = transform.Then(m)
+			// Child transform is applied in local coordinates, then parent.
+			transform = m.Then(transform)
 		}
 	}
 
@@ -261,7 +262,8 @@ func (p *parserState) expandUse(node *xmlNode, ctx context, renderDefs bool) err
 		}
 	}
 	useMap = useMap.Then(model.Translate(tx, ty))
-	useCtx.transform = useCtx.transform.Then(useMap)
+	// Referenced content applies use mapping first, then inherited parent transform.
+	useCtx.transform = useMap.Then(useCtx.transform)
 
 	p.useDepth[id]++
 	err := p.walk(target, useCtx, true)
