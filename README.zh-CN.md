@@ -1,6 +1,8 @@
 ﻿# svgoimg
 
-`svgoimg` 是一个纯 Go 的 SVG 渲染库，目标是把 SVG 转成 Go 可直接使用的 `image.Image`（当前实现为 `*image.NRGBA`），并且不依赖第三方 SVG 转换引擎。
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
+Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs/use` and gradient support | 纯 Go SVG 渲染库，可将 SVG 转为 Go `image.Image`，并内建支持 `defs/use` 与渐变。
 
 ## 项目目标
 
