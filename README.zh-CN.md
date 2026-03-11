@@ -137,6 +137,23 @@ go run ./cmd/svg2img -in examples/assets/sample.svg -out examples/assets/sample.
 </svg>
 ```
 
+## Golden 测试资源
+
+- 输入 SVG 目录：`testdata/svg_inputs`
+- 期望 PNG 目录：`testdata/png_outputs`
+
+执行 golden 对比：
+
+```bash
+go test ./... -run TestGoldenSVGCases
+```
+
+重新生成期望输出图片：
+
+```bash
+go test ./... -run TestGoldenSVGCases -update-golden
+```
+
 ## 项目结构
 
 ```text

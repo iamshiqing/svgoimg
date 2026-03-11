@@ -1,0 +1,20 @@
+﻿<svg width="160" height="100" viewBox="0 0 160 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </radialGradient>
+    <symbol id="mount" viewBox="0 0 40 20">
+      <path d="M0 20 L14 4 L22 12 L30 6 L40 20 Z" fill="#0f172a"/>
+    </symbol>
+  </defs>
+  <rect x="0" y="0" width="160" height="100" fill="url(#sky)"/>
+  <circle cx="30" cy="24" r="14" fill="url(#sun)"/>
+  <use href="#mount" x="18" y="54" width="58" height="30"/>
+  <use href="#mount" x="66" y="50" width="64" height="34"/>
+  <use href="#mount" x="114" y="58" width="44" height="24"/>
+</svg>

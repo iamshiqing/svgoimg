@@ -1,0 +1,12 @@
+﻿<svg width="160" height="100" viewBox="0 0 160 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <g id="chip">
+      <rect x="0" y="0" width="24" height="24" rx="6" fill="#f97316"/>
+      <circle cx="12" cy="12" r="5" fill="#7c2d12"/>
+    </g>
+  </defs>
+  <rect x="0" y="0" width="160" height="100" fill="#f8fafc"/>
+  <use href="#chip" x="24" y="18"/>
+  <use href="#chip" x="68" y="38"/>
+  <use href="#chip" x="112" y="58"/>
+</svg>

@@ -137,6 +137,23 @@ go run ./cmd/svg2img -in examples/assets/sample.svg -out examples/assets/sample.
 </svg>
 ```
 
+## Golden Test Assets
+
+- Input SVG folder: `testdata/svg_inputs`
+- Expected PNG folder: `testdata/png_outputs`
+
+Run golden comparison:
+
+```bash
+go test ./... -run TestGoldenSVGCases
+```
+
+Regenerate expected PNG outputs:
+
+```bash
+go test ./... -run TestGoldenSVGCases -update-golden
+```
+
 ## Project Layout
 
 ```text
