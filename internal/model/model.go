@@ -1,0 +1,180 @@
+package model
+
+import (
+	"image/color"
+	"math"
+)
+
+type Scene struct {
+	Width    float64
+	Height   float64
+	ViewBox  Rect
+	Commands []Command
+}
+
+type Command struct {
+	Path  Path
+	Style Style
+}
+
+type Path struct {
+	Subpaths []Subpath
+}
+
+type Subpath struct {
+	Points []Point
+	Closed bool
+}
+
+type Rect struct {
+	X float64
+	Y float64
+	W float64
+	H float64
+}
+
+func (r Rect) IsValid() bool {
+	return r.W > 0 && r.H > 0 && !math.IsNaN(r.W) && !math.IsNaN(r.H)
+}
+
+type Point struct {
+	X float64
+	Y float64
+}
+
+func (p Point) Equal(o Point) bool {
+	return p.X == o.X && p.Y == o.Y
+}
+
+type Matrix struct {
+	A float64
+	B float64
+	C float64
+	D float64
+	E float64
+	F float64
+}
+
+var IdentityMatrix = Matrix{
+	A: 1,
+	D: 1,
+}
+
+func (m Matrix) Apply(p Point) Point {
+	return Point{
+		X: m.A*p.X + m.C*p.Y + m.E,
+		Y: m.B*p.X + m.D*p.Y + m.F,
+	}
+}
+
+// Then composes two transforms in draw order:
+// first apply m, then apply n.
+func (m Matrix) Then(n Matrix) Matrix {
+	return Matrix{
+		A: n.A*m.A + n.C*m.B,
+		B: n.B*m.A + n.D*m.B,
+		C: n.A*m.C + n.C*m.D,
+		D: n.B*m.C + n.D*m.D,
+		E: n.A*m.E + n.C*m.F + n.E,
+		F: n.B*m.E + n.D*m.F + n.F,
+	}
+}
+
+func Translate(tx, ty float64) Matrix {
+	return Matrix{
+		A: 1,
+		D: 1,
+		E: tx,
+		F: ty,
+	}
+}
+
+func Scale(sx, sy float64) Matrix {
+	return Matrix{
+		A: sx,
+		D: sy,
+	}
+}
+
+func Rotate(rad float64) Matrix {
+	s, c := math.Sin(rad), math.Cos(rad)
+	return Matrix{
+		A: c,
+		B: s,
+		C: -s,
+		D: c,
+	}
+}
+
+func SkewX(rad float64) Matrix {
+	return Matrix{
+		A: 1,
+		C: math.Tan(rad),
+		D: 1,
+	}
+}
+
+func SkewY(rad float64) Matrix {
+	return Matrix{
+		A: 1,
+		B: math.Tan(rad),
+		D: 1,
+	}
+}
+
+func (m Matrix) ApproxScale() float64 {
+	sx := math.Hypot(m.A, m.B)
+	sy := math.Hypot(m.C, m.D)
+	if sx == 0 && sy == 0 {
+		return 1
+	}
+	if sx == 0 {
+		return sy
+	}
+	if sy == 0 {
+		return sx
+	}
+	return (sx + sy) * 0.5
+}
+
+type FillRule uint8
+
+const (
+	FillRuleNonZero FillRule = iota
+	FillRuleEvenOdd
+)
+
+type Paint struct {
+	None  bool
+	Color color.NRGBA
+}
+
+type Style struct {
+	Fill          Paint
+	Stroke        Paint
+	StrokeWidth   float64
+	Opacity       float64
+	FillOpacity   float64
+	StrokeOpacity float64
+	FillRule      FillRule
+	Visible       bool
+	CurrentColor  color.NRGBA
+}
+
+func DefaultStyle() Style {
+	return Style{
+		Fill: Paint{
+			Color: color.NRGBA{R: 0, G: 0, B: 0, A: 255},
+		},
+		Stroke: Paint{
+			None: true,
+		},
+		StrokeWidth:   1,
+		Opacity:       1,
+		FillOpacity:   1,
+		StrokeOpacity: 1,
+		FillRule:      FillRuleNonZero,
+		Visible:       true,
+		CurrentColor:  color.NRGBA{R: 0, G: 0, B: 0, A: 255},
+	}
+}
