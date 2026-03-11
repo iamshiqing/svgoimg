@@ -226,6 +226,82 @@ func TestDecode_UseSymbolTranslateNotScaled(t *testing.T) {
 	}
 }
 
+func TestDecode_MissingGradientWithoutFallbackIsNone(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="20" height="20" fill="url(#missingGrad)"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	center := color.NRGBAModel.Convert(img.At(10, 10)).(color.NRGBA)
+	if center.A != 0 {
+		t.Fatalf("missing gradient without fallback should render none, got %#v", center)
+	}
+}
+
+func TestDecode_MissingGradientWithColorFallback(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="20" height="20" fill="url(#missingGrad) #ff0000"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	center := color.NRGBAModel.Convert(img.At(10, 10)).(color.NRGBA)
+	if !isMostlyRed(center) {
+		t.Fatalf("missing gradient with fallback should use fallback color, got %#v", center)
+	}
+}
+
+func TestDecode_URLQuotedGradientID(t *testing.T) {
+	svg := `<svg viewBox="0 0 100 10" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff0000"/>
+      <stop offset="100%" stop-color="#0000ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="10" fill="url('#g')"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	left := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	right := color.NRGBAModel.Convert(img.At(95, 5)).(color.NRGBA)
+	if !isMostlyRed(left) {
+		t.Fatalf("left gradient pixel = %#v, want red-like", left)
+	}
+	if !isMostlyBlue(right) {
+		t.Fatalf("right gradient pixel = %#v, want blue-like", right)
+	}
+}
+
+func TestDecode_TransparentNamedColor(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="20" height="20" fill="transparent"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	center := color.NRGBAModel.Convert(img.At(10, 10)).(color.NRGBA)
+	if center.A != 0 {
+		t.Fatalf("transparent color should have alpha 0, got %#v", center)
+	}
+}
+
+func TestDecode_InvalidShortHexInStrictModeReturnsError(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="20" height="20" fill="#zz0"/>
+</svg>`
+	_, err := DecodeString(svg, &Options{ParseMode: ParseStrict})
+	if err == nil {
+		t.Fatalf("expected strict parse error for invalid short hex")
+	}
+}
+
 func isMostlyWhite(c color.NRGBA) bool {
 	return c.R >= 240 && c.G >= 240 && c.B >= 240 && c.A >= 240
 }

@@ -10,20 +10,21 @@ import (
 )
 
 var namedColors = map[string]color.NRGBA{
-	"black":   {R: 0, G: 0, B: 0, A: 255},
-	"white":   {R: 255, G: 255, B: 255, A: 255},
-	"red":     {R: 255, G: 0, B: 0, A: 255},
-	"green":   {R: 0, G: 128, B: 0, A: 255},
-	"blue":    {R: 0, G: 0, B: 255, A: 255},
-	"yellow":  {R: 255, G: 255, B: 0, A: 255},
-	"cyan":    {R: 0, G: 255, B: 255, A: 255},
-	"magenta": {R: 255, G: 0, B: 255, A: 255},
-	"gray":    {R: 128, G: 128, B: 128, A: 255},
-	"grey":    {R: 128, G: 128, B: 128, A: 255},
-	"orange":  {R: 255, G: 165, B: 0, A: 255},
-	"purple":  {R: 128, G: 0, B: 128, A: 255},
-	"brown":   {R: 165, G: 42, B: 42, A: 255},
-	"pink":    {R: 255, G: 192, B: 203, A: 255},
+	"black":       {R: 0, G: 0, B: 0, A: 255},
+	"white":       {R: 255, G: 255, B: 255, A: 255},
+	"red":         {R: 255, G: 0, B: 0, A: 255},
+	"green":       {R: 0, G: 128, B: 0, A: 255},
+	"blue":        {R: 0, G: 0, B: 255, A: 255},
+	"yellow":      {R: 255, G: 255, B: 0, A: 255},
+	"cyan":        {R: 0, G: 255, B: 255, A: 255},
+	"magenta":     {R: 255, G: 0, B: 255, A: 255},
+	"gray":        {R: 128, G: 128, B: 128, A: 255},
+	"grey":        {R: 128, G: 128, B: 128, A: 255},
+	"orange":      {R: 255, G: 165, B: 0, A: 255},
+	"purple":      {R: 128, G: 0, B: 128, A: 255},
+	"brown":       {R: 165, G: 42, B: 42, A: 255},
+	"pink":        {R: 255, G: 192, B: 203, A: 255},
+	"transparent": {R: 0, G: 0, B: 0, A: 0},
 }
 
 func parsePaint(raw string, currentColor color.NRGBA) (model.Paint, error) {
@@ -57,6 +58,7 @@ func parseURLPaint(raw string, currentColor color.NRGBA) (model.Paint, error) {
 		return model.Paint{}, fmt.Errorf("invalid paint url %q", raw)
 	}
 	ref := strings.TrimSpace(raw[len("url("):closeIdx])
+	ref = trimQuoted(ref)
 	id := ""
 	if strings.HasPrefix(ref, "#") {
 		id = strings.TrimPrefix(ref, "#")
@@ -72,13 +74,8 @@ func parseURLPaint(raw string, currentColor color.NRGBA) (model.Paint, error) {
 		GradientID: id,
 	}
 
-	// Keep compatibility with common "url(#id) fallback" forms and provide
-	// a safe default fallback to currentColor if the gradient can't be resolved.
-	p.Color = currentColor
-	p.HasFallback = true
-
 	tail := strings.TrimSpace(raw[closeIdx+1:])
-	if tail != "" {
+	if tail != "" && !strings.EqualFold(tail, "none") {
 		c, err := parseColorToken(tail, currentColor)
 		if err != nil {
 			return model.Paint{}, err
@@ -87,6 +84,16 @@ func parseURLPaint(raw string, currentColor color.NRGBA) (model.Paint, error) {
 		p.HasFallback = true
 	}
 	return p, nil
+}
+
+func trimQuoted(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		if (s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"') {
+			return strings.TrimSpace(s[1 : len(s)-1])
+		}
+	}
+	return s
 }
 
 func parseColorToken(raw string, currentColor color.NRGBA) (color.NRGBA, error) {
@@ -155,15 +162,36 @@ func parseHexColor(v string) (color.NRGBA, bool, error) {
 	h := strings.TrimPrefix(strings.TrimSpace(v), "#")
 	switch len(h) {
 	case 3:
-		r, _ := strconv.ParseUint(strings.Repeat(string(h[0]), 2), 16, 8)
-		g, _ := strconv.ParseUint(strings.Repeat(string(h[1]), 2), 16, 8)
-		b, _ := strconv.ParseUint(strings.Repeat(string(h[2]), 2), 16, 8)
+		r, err := strconv.ParseUint(strings.Repeat(string(h[0]), 2), 16, 8)
+		if err != nil {
+			return color.NRGBA{}, true, fmt.Errorf("invalid hex color %q", v)
+		}
+		g, err := strconv.ParseUint(strings.Repeat(string(h[1]), 2), 16, 8)
+		if err != nil {
+			return color.NRGBA{}, true, fmt.Errorf("invalid hex color %q", v)
+		}
+		b, err := strconv.ParseUint(strings.Repeat(string(h[2]), 2), 16, 8)
+		if err != nil {
+			return color.NRGBA{}, true, fmt.Errorf("invalid hex color %q", v)
+		}
 		return color.NRGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255}, false, nil
 	case 4:
-		r, _ := strconv.ParseUint(strings.Repeat(string(h[0]), 2), 16, 8)
-		g, _ := strconv.ParseUint(strings.Repeat(string(h[1]), 2), 16, 8)
-		b, _ := strconv.ParseUint(strings.Repeat(string(h[2]), 2), 16, 8)
-		a, _ := strconv.ParseUint(strings.Repeat(string(h[3]), 2), 16, 8)
+		r, err := strconv.ParseUint(strings.Repeat(string(h[0]), 2), 16, 8)
+		if err != nil {
+			return color.NRGBA{}, true, fmt.Errorf("invalid hex color %q", v)
+		}
+		g, err := strconv.ParseUint(strings.Repeat(string(h[1]), 2), 16, 8)
+		if err != nil {
+			return color.NRGBA{}, true, fmt.Errorf("invalid hex color %q", v)
+		}
+		b, err := strconv.ParseUint(strings.Repeat(string(h[2]), 2), 16, 8)
+		if err != nil {
+			return color.NRGBA{}, true, fmt.Errorf("invalid hex color %q", v)
+		}
+		a, err := strconv.ParseUint(strings.Repeat(string(h[3]), 2), 16, 8)
+		if err != nil {
+			return color.NRGBA{}, true, fmt.Errorf("invalid hex color %q", v)
+		}
 		return color.NRGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: uint8(a)}, false, nil
 	case 6:
 		u, err := strconv.ParseUint(h, 16, 32)
