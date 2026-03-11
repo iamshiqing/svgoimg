@@ -34,7 +34,9 @@ func parseTransform(raw string) (model.Matrix, error) {
 		if err != nil {
 			return model.IdentityMatrix, err
 		}
-		m = m.Then(op)
+		// SVG transform lists are applied from right to left for points,
+		// so each parsed operation needs to be prepended.
+		m = op.Then(m)
 		raw = strings.TrimSpace(raw[closeIdx+1:])
 	}
 	return m, nil
@@ -76,7 +78,8 @@ func transformFrom(name string, args []float64) (model.Matrix, error) {
 		}
 		if len(args) == 3 {
 			rot := model.Rotate(args[0] * math.Pi / 180.0)
-			return model.Translate(args[1], args[2]).Then(rot).Then(model.Translate(-args[1], -args[2])), nil
+			// rotate(a, cx, cy) == translate(cx, cy) rotate(a) translate(-cx, -cy)
+			return model.Translate(-args[1], -args[2]).Then(rot).Then(model.Translate(args[1], args[2])), nil
 		}
 		return model.IdentityMatrix, fmt.Errorf("rotate() expects 1 or 3 args")
 	case "skewx":
