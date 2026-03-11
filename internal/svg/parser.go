@@ -254,13 +254,14 @@ func (p *parserState) expandUse(node *xmlNode, ctx context, renderDefs bool) err
 	ty, _ := parseAttrLength(node.Attrs, "y", vh, 0)
 
 	useCtx := ctx
-	useCtx.transform = useCtx.transform.Then(model.Translate(tx, ty))
-
+	useMap := model.IdentityMatrix
 	if target.Name == "symbol" {
 		if m, ok := symbolUseTransform(target, node.Attrs, p.scene.ViewBox); ok {
-			useCtx.transform = useCtx.transform.Then(m)
+			useMap = useMap.Then(m)
 		}
 	}
+	useMap = useMap.Then(model.Translate(tx, ty))
+	useCtx.transform = useCtx.transform.Then(useMap)
 
 	p.useDepth[id]++
 	err := p.walk(target, useCtx, true)

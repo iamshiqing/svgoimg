@@ -27,21 +27,21 @@ var namedColors = map[string]color.NRGBA{
 }
 
 func parsePaint(raw string, currentColor color.NRGBA) (model.Paint, error) {
-	v := strings.TrimSpace(strings.ToLower(raw))
-	if v == "" {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
 		return model.Paint{None: true}, nil
 	}
-	if v == "none" {
+	if strings.EqualFold(raw, "none") {
 		return model.Paint{None: true}, nil
 	}
-	if strings.HasPrefix(v, "url(") {
-		p, err := parseURLPaint(v, currentColor)
+	if strings.HasPrefix(strings.ToLower(raw), "url(") {
+		p, err := parseURLPaint(raw, currentColor)
 		if err != nil {
 			return model.Paint{}, err
 		}
 		return p, nil
 	}
-	c, err := parseColorToken(v, currentColor)
+	c, err := parseColorToken(raw, currentColor)
 	if err != nil {
 		return model.Paint{}, err
 	}

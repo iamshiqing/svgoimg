@@ -179,6 +179,53 @@ func TestDecode_RadialGradient(t *testing.T) {
 	}
 }
 
+func TestDecode_GradientIDCaseSensitiveReference(t *testing.T) {
+	svg := `<svg viewBox="0 0 100 10" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="MyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff0000"/>
+      <stop offset="100%" stop-color="#0000ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="10" fill="url(#MyGrad)"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	left := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	right := color.NRGBAModel.Convert(img.At(95, 5)).(color.NRGBA)
+	if !isMostlyRed(left) {
+		t.Fatalf("left gradient pixel = %#v, want red-like", left)
+	}
+	if !isMostlyBlue(right) {
+		t.Fatalf("right gradient pixel = %#v, want blue-like", right)
+	}
+}
+
+func TestDecode_UseSymbolTranslateNotScaled(t *testing.T) {
+	svg := `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="box" viewBox="0 0 10 10">
+      <rect x="0" y="0" width="10" height="10" fill="#ff0000"/>
+    </symbol>
+  </defs>
+  <use href="#box" x="40" y="10" width="20" height="20"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	expected := color.NRGBAModel.Convert(img.At(50, 20)).(color.NRGBA)
+	unexpected := color.NRGBAModel.Convert(img.At(90, 20)).(color.NRGBA)
+	if !isMostlyRed(expected) {
+		t.Fatalf("expected symbol area to be red-like, got %#v", expected)
+	}
+	if unexpected.A != 0 {
+		t.Fatalf("unexpected shifted symbol area should be transparent, got %#v", unexpected)
+	}
+}
+
 func isMostlyWhite(c color.NRGBA) bool {
 	return c.R >= 240 && c.G >= 240 && c.B >= 240 && c.A >= 240
 }
