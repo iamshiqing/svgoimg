@@ -148,6 +148,12 @@ go run ./cmd/svg2img -in examples/assets/sample.svg -out examples/assets/sample.
 go test ./... -run TestGoldenSVGCases
 ```
 
+执行感知阈值对比（适合允许轻微抗锯齿差异的场景）：
+
+```bash
+go test ./... -run TestGoldenSVGCases -golden-compare=perceptual -golden-pixel-delta=2 -golden-max-mae=0.15 -golden-max-diff-ratio=0.001 -golden-max-channel-delta=12
+```
+
 重新生成期望输出图片：
 
 ```bash

@@ -148,6 +148,12 @@ Run golden comparison:
 go test ./... -run TestGoldenSVGCases
 ```
 
+Run perceptual-threshold comparison (useful when tiny anti-alias differences are acceptable):
+
+```bash
+go test ./... -run TestGoldenSVGCases -golden-compare=perceptual -golden-pixel-delta=2 -golden-max-mae=0.15 -golden-max-diff-ratio=0.001 -golden-max-channel-delta=12
+```
+
 Regenerate expected PNG outputs:
 
 ```bash
