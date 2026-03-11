@@ -33,11 +33,12 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 ### 样式与变换
 
 - `fill`, `stroke`, `stroke-width`
-- `opacity`, `fill-opacity`, `stroke-opacity`
+- `opacity`, `fill-opacity`, `stroke-opacity`（支持数字与百分比写法，如 `0.5` / `50%`）
 - `fill-rule`（`nonzero`, `evenodd`）
 - `transform`（`matrix`, `translate`, `scale`, `rotate`, `skewX`, `skewY`）
 - `style="..."`
 - 支持 paint server 引用：`fill="url(#id)"`、`stroke="url(#id)"`
+- 颜色支持：hex、`rgb(...)`、`rgba(...)`、`currentColor`、`transparent`，以及常见 CSS/SVG 命名色（如 `aliceblue`）
 
 ### 渐变
 
@@ -61,6 +62,9 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 - 适配模式（`contain`, `cover`, `stretch`）
 - 可选背景色
 - 解析模式（`ignore`, `warn`, `strict`）
+- `warn` 模式可选告警回调：`Options.OnWarning func(error)`
+
+使用 `ParseWarn` 时，非致命解析问题会通过 `OnWarning` 回调上报，并继续渲染。
 
 ## 暂未支持
 
@@ -158,6 +162,12 @@ go test ./... -run TestGoldenSVGCases -golden-compare=perceptual -golden-pixel-d
 
 ```bash
 go test ./... -run TestGoldenSVGCases -update-golden
+```
+
+执行解码性能基准：
+
+```bash
+go test . -bench BenchmarkDecode -benchmem
 ```
 
 ## 项目结构

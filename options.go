@@ -60,6 +60,7 @@ type Options struct {
 	Fit            FitMode
 	Background     color.Color
 	ParseMode      ParseMode
+	OnWarning      func(error)
 	CurveTolerance float64
 }
 
@@ -76,6 +77,7 @@ func (o Options) withDefaults() Options {
 func (o Options) toSVGOptions() svg.Options {
 	return svg.Options{
 		Mode:           svg.ParseMode(o.ParseMode),
+		OnWarning:      o.OnWarning,
 		CurveTolerance: o.CurveTolerance,
 	}
 }

@@ -23,7 +23,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	if v, ok := props["color"]; ok {
 		clr, err := parseColorToken(v, style.CurrentColor)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("parse color: %w", err)
 			}
 		} else {
@@ -34,7 +34,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	if v, ok := props["fill"]; ok {
 		p, err := parsePaint(v, style.CurrentColor)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("parse fill: %w", err)
 			}
 		} else {
@@ -45,7 +45,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	if v, ok := props["stroke"]; ok {
 		p, err := parsePaint(v, style.CurrentColor)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("parse stroke: %w", err)
 			}
 		} else {
@@ -56,7 +56,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	if v, ok := props["stroke-width"]; ok {
 		l, err := parseLength(v, 0)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("parse stroke-width: %w", err)
 			}
 		} else if l >= 0 {
@@ -67,7 +67,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	if v, ok := props["opacity"]; ok {
 		o, err := parseOpacity(v)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("parse opacity: %w", err)
 			}
 		} else {
@@ -77,7 +77,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	if v, ok := props["fill-opacity"]; ok {
 		o, err := parseOpacity(v)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("parse fill-opacity: %w", err)
 			}
 		} else {
@@ -87,7 +87,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	if v, ok := props["stroke-opacity"]; ok {
 		o, err := parseOpacity(v)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("parse stroke-opacity: %w", err)
 			}
 		} else {
@@ -101,7 +101,7 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 		case "nonzero", "":
 			style.FillRule = model.FillRuleNonZero
 		default:
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return style, fmt.Errorf("unsupported fill-rule %q", v)
 			}
 		}

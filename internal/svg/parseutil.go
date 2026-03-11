@@ -26,6 +26,14 @@ func parseFloat(raw string) (float64, error) {
 }
 
 func parseOpacity(raw string) (float64, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.HasSuffix(raw, "%") {
+		v, err := parseFloat(strings.TrimSuffix(raw, "%"))
+		if err != nil {
+			return 0, err
+		}
+		return clamp01(v / 100.0), nil
+	}
 	v, err := parseFloat(raw)
 	if err != nil {
 		return 0, err

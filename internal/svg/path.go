@@ -81,6 +81,7 @@ func parsePathData(d string, tolerance float64) (model.Path, error) {
 		if s.eof() {
 			break
 		}
+		iterStart := s.i
 
 		ch := s.s[s.i]
 		if isPathCmd(ch) {
@@ -364,6 +365,11 @@ func parsePathData(d string, tolerance float64) (model.Path, error) {
 
 		default:
 			return model.Path{}, fmt.Errorf("unsupported path command %q", string(cmd))
+		}
+
+		// Guard against malformed tokens causing no scanner progress and infinite loops.
+		if s.i == iterStart {
+			return model.Path{}, fmt.Errorf("unexpected token in path data near %q", s.rest())
 		}
 	}
 

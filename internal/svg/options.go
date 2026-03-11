@@ -10,6 +10,7 @@ const (
 
 type Options struct {
 	Mode           ParseMode
+	OnWarning      func(error)
 	CurveTolerance float64
 }
 

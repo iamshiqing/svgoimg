@@ -33,11 +33,12 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 ### Styling
 
 - `fill`, `stroke`, `stroke-width`
-- `opacity`, `fill-opacity`, `stroke-opacity`
+- `opacity`, `fill-opacity`, `stroke-opacity` (supports number and percent forms like `0.5` / `50%`)
 - `fill-rule` (`nonzero`, `evenodd`)
 - `transform` (`matrix`, `translate`, `scale`, `rotate`, `skewX`, `skewY`)
 - `style="..."`
 - paint server reference: `fill="url(#id)"`, `stroke="url(#id)"`
+- color formats: hex, `rgb(...)`, `rgba(...)`, `currentColor`, `transparent`, and common CSS/SVG named colors (for example `aliceblue`)
 
 ### Gradients
 
@@ -61,6 +62,9 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 - Fit mode (`contain`, `cover`, `stretch`)
 - Optional background color
 - Parse mode (`ignore`, `warn`, `strict`)
+- Optional warning callback in warn mode: `Options.OnWarning func(error)`
+
+When using `ParseWarn`, non-fatal parse issues are reported through `OnWarning` and rendering continues.
 
 ## Not Supported Yet
 
@@ -158,6 +162,12 @@ Regenerate expected PNG outputs:
 
 ```bash
 go test ./... -run TestGoldenSVGCases -update-golden
+```
+
+Run decode benchmarks:
+
+```bash
+go test . -bench BenchmarkDecode -benchmem
 ```
 
 ## Project Layout

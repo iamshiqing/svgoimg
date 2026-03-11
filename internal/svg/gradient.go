@@ -3,7 +3,6 @@ package svg
 import (
 	"fmt"
 	"image/color"
-	"sort"
 	"strings"
 
 	"github.com/iamshiqing/svgoimg/internal/model"
@@ -71,7 +70,7 @@ func (p *parserState) parseGradientNode(node *xmlNode, id string) (model.Gradien
 		case "objectboundingbox":
 			g.Units = model.GradientUnitsObjectBoundingBox
 		default:
-			if p.opts.Mode == ParseStrict {
+			if p.opts.Mode != ParseIgnore {
 				return model.Gradient{}, fmt.Errorf("unsupported gradientUnits %q", v)
 			}
 		}
@@ -86,7 +85,7 @@ func (p *parserState) parseGradientNode(node *xmlNode, id string) (model.Gradien
 		case "reflect":
 			g.Spread = model.GradientSpreadReflect
 		default:
-			if p.opts.Mode == ParseStrict {
+			if p.opts.Mode != ParseIgnore {
 				return model.Gradient{}, fmt.Errorf("unsupported spreadMethod %q", v)
 			}
 		}
@@ -95,7 +94,7 @@ func (p *parserState) parseGradientNode(node *xmlNode, id string) (model.Gradien
 	if raw := strings.TrimSpace(node.Attrs["gradienttransform"]); raw != "" {
 		m, err := parseTransform(raw)
 		if err != nil {
-			if p.opts.Mode == ParseStrict {
+			if p.opts.Mode != ParseIgnore {
 				return model.Gradient{}, fmt.Errorf("gradientTransform: %w", err)
 			}
 		} else {
@@ -104,7 +103,7 @@ func (p *parserState) parseGradientNode(node *xmlNode, id string) (model.Gradien
 	}
 
 	if err := p.applyGradientCoordinates(&g, node.Attrs); err != nil {
-		if p.opts.Mode == ParseStrict {
+		if p.opts.Mode != ParseIgnore {
 			return model.Gradient{}, err
 		}
 	}
@@ -123,9 +122,8 @@ func (p *parserState) parseGradientNode(node *xmlNode, id string) (model.Gradien
 		}
 	}
 
-	sort.SliceStable(stops, func(i, j int) bool {
-		return stops[i].Offset < stops[j].Offset
-	})
+	// Keep author order and clamp non-monotonic offsets per SVG behavior.
+	stops = normalizeGradientStops(stops)
 	if stops[0].Offset > 0 {
 		stops = append([]model.GradientStop{{Offset: 0, Color: stops[0].Color}}, stops...)
 	}
@@ -278,7 +276,7 @@ func parseGradientStop(node *xmlNode, mode ParseMode) (model.GradientStop, bool,
 		if strings.HasSuffix(raw, "%") {
 			v, err := parseFloat(strings.TrimSuffix(raw, "%"))
 			if err != nil {
-				if mode == ParseStrict {
+				if mode != ParseIgnore {
 					return model.GradientStop{}, false, fmt.Errorf("stop offset: %w", err)
 				}
 				return model.GradientStop{}, false, nil
@@ -287,7 +285,7 @@ func parseGradientStop(node *xmlNode, mode ParseMode) (model.GradientStop, bool,
 		} else {
 			v, err := parseFloat(raw)
 			if err != nil {
-				if mode == ParseStrict {
+				if mode != ParseIgnore {
 					return model.GradientStop{}, false, fmt.Errorf("stop offset: %w", err)
 				}
 				return model.GradientStop{}, false, nil
@@ -306,7 +304,7 @@ func parseGradientStop(node *xmlNode, mode ParseMode) (model.GradientStop, bool,
 	if raw := props["stop-color"]; strings.TrimSpace(raw) != "" {
 		c, err := parseColorToken(raw, stopColor)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return model.GradientStop{}, false, fmt.Errorf("stop-color: %w", err)
 			}
 		} else {
@@ -317,7 +315,7 @@ func parseGradientStop(node *xmlNode, mode ParseMode) (model.GradientStop, bool,
 	if raw := props["stop-opacity"]; strings.TrimSpace(raw) != "" {
 		v, err := parseOpacity(raw)
 		if err != nil {
-			if mode == ParseStrict {
+			if mode != ParseIgnore {
 				return model.GradientStop{}, false, fmt.Errorf("stop-opacity: %w", err)
 			}
 		} else {
@@ -338,5 +336,21 @@ func copyStops(stops []model.GradientStop) []model.GradientStop {
 	}
 	out := make([]model.GradientStop, len(stops))
 	copy(out, stops)
+	return out
+}
+
+func normalizeGradientStops(stops []model.GradientStop) []model.GradientStop {
+	if len(stops) == 0 {
+		return nil
+	}
+	out := make([]model.GradientStop, len(stops))
+	copy(out, stops)
+	prev := 0.0
+	for i := range out {
+		if out[i].Offset < prev {
+			out[i].Offset = prev
+		}
+		prev = out[i].Offset
+	}
 	return out
 }

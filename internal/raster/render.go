@@ -10,6 +10,13 @@ import (
 	"github.com/iamshiqing/svgoimg/internal/model"
 )
 
+var msaa4Samples = [4][2]float64{
+	{0.25, 0.25},
+	{0.75, 0.25},
+	{0.25, 0.75},
+	{0.75, 0.75},
+}
+
 func Render(scene model.Scene, opts Options) (*image.NRGBA, error) {
 	opts = opts.withDefaults()
 
@@ -196,6 +203,18 @@ type edge struct {
 	B model.Point
 }
 
+type strokeSegment struct {
+	A     model.Point
+	B     model.Point
+	vx    float64
+	vy    float64
+	lenSq float64
+	minX  float64
+	minY  float64
+	maxX  float64
+	maxY  float64
+}
+
 func fillPath(img *image.NRGBA, path model.Path, clr color.NRGBA, rule model.FillRule) {
 	if clr.A == 0 {
 		return
@@ -216,17 +235,10 @@ func fillPath(img *image.NRGBA, path model.Path, clr color.NRGBA, rule model.Fil
 		return
 	}
 
-	samples := [4][2]float64{
-		{0.25, 0.25},
-		{0.75, 0.25},
-		{0.25, 0.75},
-		{0.75, 0.75},
-	}
-
 	for y := minY; y <= maxY; y++ {
 		for x := minX; x <= maxX; x++ {
 			inside := 0
-			for _, s := range samples {
+			for _, s := range msaa4Samples {
 				px := float64(x) + s[0]
 				py := float64(y) + s[1]
 				hit := false
@@ -243,7 +255,7 @@ func fillPath(img *image.NRGBA, path model.Path, clr color.NRGBA, rule model.Fil
 				continue
 			}
 			src := clr
-			src.A = uint8(float64(clr.A)*(float64(inside)/float64(len(samples))) + 0.5)
+			src.A = uint8(float64(clr.A)*(float64(inside)/float64(len(msaa4Samples))) + 0.5)
 			blendAt(img, x, y, src)
 		}
 	}
@@ -253,14 +265,14 @@ func strokePath(img *image.NRGBA, path model.Path, clr color.NRGBA, width float6
 	if clr.A == 0 || width <= 0 {
 		return
 	}
-	segments := strokeEdges(path)
+	segments := strokeSegments(path)
 	if len(segments) == 0 {
 		return
 	}
 	half := width * 0.5
 	halfSq := half * half
 
-	b, ok := edgesBounds(segments, half)
+	b, ok := strokeSegmentsBounds(segments, half)
 	if !ok {
 		return
 	}
@@ -272,21 +284,14 @@ func strokePath(img *image.NRGBA, path model.Path, clr color.NRGBA, width float6
 		return
 	}
 
-	samples := [4][2]float64{
-		{0.25, 0.25},
-		{0.75, 0.25},
-		{0.25, 0.75},
-		{0.75, 0.75},
-	}
-
 	for y := minY; y <= maxY; y++ {
 		for x := minX; x <= maxX; x++ {
 			hit := 0
-			for _, s := range samples {
+			for _, s := range msaa4Samples {
 				px := float64(x) + s[0]
 				py := float64(y) + s[1]
 				p := model.Point{X: px, Y: py}
-				if pointOnStroke(p, segments, halfSq) {
+				if pointOnStroke(p, segments, half, halfSq) {
 					hit++
 				}
 			}
@@ -294,7 +299,7 @@ func strokePath(img *image.NRGBA, path model.Path, clr color.NRGBA, width float6
 				continue
 			}
 			src := clr
-			src.A = uint8(float64(clr.A)*(float64(hit)/float64(len(samples))) + 0.5)
+			src.A = uint8(float64(clr.A)*(float64(hit)/float64(len(msaa4Samples))) + 0.5)
 			blendAt(img, x, y, src)
 		}
 	}
@@ -352,20 +357,58 @@ func closedEdges(path model.Path) []edge {
 	return out
 }
 
-func strokeEdges(path model.Path) []edge {
-	out := make([]edge, 0, 16)
+func strokeSegments(path model.Path) []strokeSegment {
+	out := make([]strokeSegment, 0, 16)
+	appendSegment := func(a, b model.Point) {
+		vx := b.X - a.X
+		vy := b.Y - a.Y
+		out = append(out, strokeSegment{
+			A:     a,
+			B:     b,
+			vx:    vx,
+			vy:    vy,
+			lenSq: vx*vx + vy*vy,
+			minX:  math.Min(a.X, b.X),
+			minY:  math.Min(a.Y, b.Y),
+			maxX:  math.Max(a.X, b.X),
+			maxY:  math.Max(a.Y, b.Y),
+		})
+	}
 	for _, sp := range path.Subpaths {
 		if len(sp.Points) < 2 {
 			continue
 		}
 		for i := 1; i < len(sp.Points); i++ {
-			out = append(out, edge{A: sp.Points[i-1], B: sp.Points[i]})
+			appendSegment(sp.Points[i-1], sp.Points[i])
 		}
 		if sp.Closed {
-			out = append(out, edge{A: sp.Points[len(sp.Points)-1], B: sp.Points[0]})
+			appendSegment(sp.Points[len(sp.Points)-1], sp.Points[0])
 		}
 	}
 	return out
+}
+
+func strokeSegmentsBounds(segments []strokeSegment, pad float64) (bounds, bool) {
+	if len(segments) == 0 {
+		return bounds{}, false
+	}
+	b := bounds{
+		minX: math.Inf(1),
+		minY: math.Inf(1),
+		maxX: math.Inf(-1),
+		maxY: math.Inf(-1),
+	}
+	for _, s := range segments {
+		b.minX = math.Min(b.minX, s.minX)
+		b.minY = math.Min(b.minY, s.minY)
+		b.maxX = math.Max(b.maxX, s.maxX)
+		b.maxY = math.Max(b.maxY, s.maxY)
+	}
+	b.minX -= pad
+	b.minY -= pad
+	b.maxX += pad
+	b.maxY += pad
+	return b, finiteBounds(b)
 }
 
 func pointInEvenOdd(px, py float64, edges []edge) bool {
@@ -404,31 +447,32 @@ func isLeft(a, b model.Point, px, py float64) float64 {
 	return (b.X-a.X)*(py-a.Y) - (px-a.X)*(b.Y-a.Y)
 }
 
-func pointOnStroke(p model.Point, segments []edge, halfSq float64) bool {
+func pointOnStroke(p model.Point, segments []strokeSegment, half float64, halfSq float64) bool {
 	for _, s := range segments {
-		if distToSegmentSq(p, s.A, s.B) <= halfSq {
+		if p.X < s.minX-half || p.X > s.maxX+half || p.Y < s.minY-half || p.Y > s.maxY+half {
+			continue
+		}
+		if distToStrokeSegmentSq(p, s) <= halfSq {
 			return true
 		}
 	}
 	return false
 }
 
-func distToSegmentSq(p, a, b model.Point) float64 {
-	vx := b.X - a.X
-	vy := b.Y - a.Y
-	if vx == 0 && vy == 0 {
-		dx := p.X - a.X
-		dy := p.Y - a.Y
+func distToStrokeSegmentSq(p model.Point, s strokeSegment) float64 {
+	if s.lenSq == 0 {
+		dx := p.X - s.A.X
+		dy := p.Y - s.A.Y
 		return dx*dx + dy*dy
 	}
-	t := ((p.X-a.X)*vx + (p.Y-a.Y)*vy) / (vx*vx + vy*vy)
+	t := ((p.X-s.A.X)*s.vx + (p.Y-s.A.Y)*s.vy) / s.lenSq
 	if t < 0 {
 		t = 0
 	} else if t > 1 {
 		t = 1
 	}
-	cx := a.X + t*vx
-	cy := a.Y + t*vy
+	cx := s.A.X + t*s.vx
+	cy := s.A.Y + t*s.vy
 	dx := p.X - cx
 	dy := p.Y - cy
 	return dx*dx + dy*dy

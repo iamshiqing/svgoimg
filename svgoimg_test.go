@@ -3,6 +3,7 @@ package svgoimg
 import (
 	"image/color"
 	"testing"
+	"time"
 )
 
 func TestDecode_UsesViewBoxSizeByDefault(t *testing.T) {
@@ -302,6 +303,108 @@ func TestDecode_InvalidShortHexInStrictModeReturnsError(t *testing.T) {
 	}
 }
 
+func TestDecode_InvalidPathTokenDoesNotHang(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <path d="M0 0 L10 10X" stroke="#ff0000" fill="none"/>
+</svg>`
+	done := make(chan error, 1)
+	go func() {
+		_, err := DecodeString(svg, nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("DecodeString in ignore mode should not return error, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("DecodeString timed out, possible parser loop")
+	}
+
+	_, err := DecodeString(svg, &Options{ParseMode: ParseStrict})
+	if err == nil {
+		t.Fatalf("expected strict parse error for invalid path token")
+	}
+}
+
+func TestDecode_GradientStopsKeepDocumentOrder(t *testing.T) {
+	svg := `<svg viewBox="0 0 100 10" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="60%" stop-color="#ff0000"/>
+      <stop offset="40%" stop-color="#0000ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="10" fill="url(#g)"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+
+	mid := color.NRGBAModel.Convert(img.At(50, 5)).(color.NRGBA)
+	right := color.NRGBAModel.Convert(img.At(90, 5)).(color.NRGBA)
+	if !isMostlyRed(mid) {
+		t.Fatalf("mid gradient pixel = %#v, want red-like (stop order should follow document order)", mid)
+	}
+	if !isMostlyBlue(right) {
+		t.Fatalf("right gradient pixel = %#v, want blue-like", right)
+	}
+}
+
+func TestDecode_OpacityPercent(t *testing.T) {
+	svg := `<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="10" height="10" fill="#ff0000" opacity="50%"/>
+</svg>`
+	img, err := DecodeString(svg, &Options{ParseMode: ParseStrict})
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	c := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	if c.A < 120 || c.A > 136 {
+		t.Fatalf("alpha = %d, want around 128 for 50%% opacity", c.A)
+	}
+}
+
+func TestDecode_NamedColorAliceBlue(t *testing.T) {
+	svg := `<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="10" height="10" fill="aliceblue"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	c := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	if !isNearColor(c, color.NRGBA{R: 240, G: 248, B: 255, A: 255}, 4) {
+		t.Fatalf("named color aliceblue parsed to %#v, want near #F0F8FF", c)
+	}
+}
+
+func TestDecode_ParseWarnReportsWarnings(t *testing.T) {
+	svg := `<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="10" height="10" fill="not-a-color"/>
+</svg>`
+	warnCount := 0
+	img, err := DecodeString(svg, &Options{
+		ParseMode: ParseWarn,
+		OnWarning: func(err error) {
+			if err != nil {
+				warnCount++
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("ParseWarn should not fail decode, got: %v", err)
+	}
+	if warnCount == 0 {
+		t.Fatalf("ParseWarn should report warnings via callback")
+	}
+	center := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	if center.A == 0 {
+		t.Fatalf("rect should still render with inherited/default fill, got %#v", center)
+	}
+}
+
 func isMostlyWhite(c color.NRGBA) bool {
 	return c.R >= 240 && c.G >= 240 && c.B >= 240 && c.A >= 240
 }
@@ -316,4 +419,19 @@ func isMostlyBlue(c color.NRGBA) bool {
 
 func luminance(c color.NRGBA) float64 {
 	return 0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B)
+}
+
+func isNearColor(got, want color.NRGBA, tolerance uint8) bool {
+	dr := absDiff(got.R, want.R)
+	dg := absDiff(got.G, want.G)
+	db := absDiff(got.B, want.B)
+	da := absDiff(got.A, want.A)
+	return dr <= tolerance && dg <= tolerance && db <= tolerance && da <= tolerance
+}
+
+func absDiff(a, b uint8) uint8 {
+	if a > b {
+		return a - b
+	}
+	return b - a
 }

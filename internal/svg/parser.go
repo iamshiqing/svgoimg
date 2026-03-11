@@ -76,6 +76,19 @@ func (p *parserState) collectIDs(node *xmlNode) {
 	}
 }
 
+func (p *parserState) handleNonFatal(err error) error {
+	if err == nil {
+		return nil
+	}
+	if p.opts.Mode == ParseStrict {
+		return err
+	}
+	if p.opts.Mode == ParseWarn && p.opts.OnWarning != nil {
+		p.opts.OnWarning(err)
+	}
+	return nil
+}
+
 func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 	if node == nil {
 		return nil
@@ -96,8 +109,8 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 	if raw := attrs["transform"]; raw != "" {
 		m, err := parseTransform(raw)
 		if err != nil {
-			if p.opts.Mode == ParseStrict {
-				return fmt.Errorf("%s transform: %w", name, err)
+			if fatal := p.handleNonFatal(fmt.Errorf("%s transform: %w", name, err)); fatal != nil {
+				return fatal
 			}
 		} else {
 			// Child transform is applied in local coordinates, then parent.
@@ -107,7 +120,9 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 
 	style, err := applyStyleAttributes(ctx.style, attrs, p.opts.Mode)
 	if err != nil {
-		return fmt.Errorf("%s style: %w", name, err)
+		if fatal := p.handleNonFatal(fmt.Errorf("%s style: %w", name, err)); fatal != nil {
+			return fatal
+		}
 	}
 
 	next := context{
@@ -118,8 +133,10 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 
 	if name == "svg" && !p.rootSeen {
 		p.rootSeen = true
-		if err := parseRootSize(attrs, &p.scene); err != nil && p.opts.Mode == ParseStrict {
-			return err
+		if err := parseRootSize(attrs, &p.scene); err != nil {
+			if fatal := p.handleNonFatal(err); fatal != nil {
+				return fatal
+			}
 		}
 	}
 
@@ -136,8 +153,10 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 	if name == "lineargradient" || name == "radialgradient" {
 		if id := strings.TrimSpace(attrs["id"]); id != "" {
 			_, err := p.ensureGradient(id)
-			if err != nil && p.opts.Mode == ParseStrict {
-				return err
+			if err != nil {
+				if fatal := p.handleNonFatal(err); fatal != nil {
+					return fatal
+				}
 			}
 		}
 	}
@@ -145,8 +164,8 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 	if name == "use" {
 		if style.Visible && (!ctx.inDefs || renderDefs) {
 			if err := p.expandUse(node, next, renderDefs); err != nil {
-				if p.opts.Mode == ParseStrict {
-					return err
+				if fatal := p.handleNonFatal(err); fatal != nil {
+					return fatal
 				}
 			}
 		}
@@ -156,8 +175,8 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 	if style.Visible && (!next.inDefs || renderDefs) {
 		path, ok, err := elementPath(name, attrs, p.scene.ViewBox, p.opts.CurveTolerance)
 		if err != nil {
-			if p.opts.Mode == ParseStrict {
-				return fmt.Errorf("%s parse failed: %w", name, err)
+			if fatal := p.handleNonFatal(fmt.Errorf("%s parse failed: %w", name, err)); fatal != nil {
+				return fatal
 			}
 		} else if ok {
 			path = transformPath(path, transform)
@@ -165,8 +184,8 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 				cmdStyle := style
 				cmdStyle.StrokeWidth = style.StrokeWidth * transform.ApproxScale()
 				if err := p.resolvePaintDependencies(&cmdStyle); err != nil {
-					if p.opts.Mode == ParseStrict {
-						return err
+					if fatal := p.handleNonFatal(err); fatal != nil {
+						return fatal
 					}
 				}
 				p.scene.Commands = append(p.scene.Commands, model.Command{
@@ -214,33 +233,21 @@ func (p *parserState) resolvePaintDependencies(style *model.Style) error {
 func (p *parserState) expandUse(node *xmlNode, ctx context, renderDefs bool) error {
 	href := strings.TrimSpace(node.Attrs["href"])
 	if href == "" {
-		if p.opts.Mode == ParseStrict {
-			return fmt.Errorf("use element missing href")
-		}
-		return nil
+		return fmt.Errorf("use element missing href")
 	}
 
 	id := refID(href)
 	if id == "" {
-		if p.opts.Mode == ParseStrict {
-			return fmt.Errorf("use href must reference #id, got %q", href)
-		}
-		return nil
+		return fmt.Errorf("use href must reference #id, got %q", href)
 	}
 
 	target := p.ids[id]
 	if target == nil {
-		if p.opts.Mode == ParseStrict {
-			return fmt.Errorf("use reference %q not found", id)
-		}
-		return nil
+		return fmt.Errorf("use reference %q not found", id)
 	}
 
 	if p.useDepth[id] >= 16 {
-		if p.opts.Mode == ParseStrict {
-			return fmt.Errorf("use reference cycle detected at %q", id)
-		}
-		return nil
+		return fmt.Errorf("use reference cycle detected at %q", id)
 	}
 
 	vw, vh := p.scene.ViewBox.W, p.scene.ViewBox.H

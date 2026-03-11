@@ -28,18 +28,12 @@ func fillPathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alpha
 	if minX > maxX || minY > maxY {
 		return
 	}
-
-	samples := [4][2]float64{
-		{0.25, 0.25},
-		{0.75, 0.25},
-		{0.25, 0.75},
-		{0.75, 0.75},
-	}
+	sampler := newGradientSampler(g, paintBounds)
 
 	for y := minY; y <= maxY; y++ {
 		for x := minX; x <= maxX; x++ {
 			inside := 0
-			for _, s := range samples {
+			for _, s := range msaa4Samples {
 				px := float64(x) + s[0]
 				py := float64(y) + s[1]
 				hit := false
@@ -55,8 +49,8 @@ func fillPathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alpha
 			if inside == 0 {
 				continue
 			}
-			coverage := float64(inside) / float64(len(samples))
-			c := sampleGradient(g, model.Point{X: float64(x) + 0.5, Y: float64(y) + 0.5}, paintBounds)
+			coverage := float64(inside) / float64(len(msaa4Samples))
+			c := sampler.sample(model.Point{X: float64(x) + 0.5, Y: float64(y) + 0.5})
 			src := applyAlpha(c, alpha*coverage)
 			blendAt(img, x, y, src)
 		}
@@ -67,7 +61,7 @@ func strokePathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alp
 	if width <= 0 {
 		return
 	}
-	segments := strokeEdges(path)
+	segments := strokeSegments(path)
 	if len(segments) == 0 {
 		return
 	}
@@ -79,7 +73,7 @@ func strokePathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alp
 	half := width * 0.5
 	halfSq := half * half
 
-	b, ok := edgesBounds(segments, half)
+	b, ok := strokeSegmentsBounds(segments, half)
 	if !ok {
 		return
 	}
@@ -90,59 +84,89 @@ func strokePathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alp
 	if minX > maxX || minY > maxY {
 		return
 	}
-
-	samples := [4][2]float64{
-		{0.25, 0.25},
-		{0.75, 0.25},
-		{0.25, 0.75},
-		{0.75, 0.75},
-	}
+	sampler := newGradientSampler(g, paintBounds)
 
 	for y := minY; y <= maxY; y++ {
 		for x := minX; x <= maxX; x++ {
 			hit := 0
-			for _, s := range samples {
+			for _, s := range msaa4Samples {
 				px := float64(x) + s[0]
 				py := float64(y) + s[1]
 				p := model.Point{X: px, Y: py}
-				if pointOnStroke(p, segments, halfSq) {
+				if pointOnStroke(p, segments, half, halfSq) {
 					hit++
 				}
 			}
 			if hit == 0 {
 				continue
 			}
-			coverage := float64(hit) / float64(len(samples))
-			c := sampleGradient(g, model.Point{X: float64(x) + 0.5, Y: float64(y) + 0.5}, paintBounds)
+			coverage := float64(hit) / float64(len(msaa4Samples))
+			c := sampler.sample(model.Point{X: float64(x) + 0.5, Y: float64(y) + 0.5})
 			src := applyAlpha(c, alpha*coverage)
 			blendAt(img, x, y, src)
 		}
 	}
 }
 
-func sampleGradient(g model.Gradient, p model.Point, b bounds) color.NRGBA {
-	gp := p
+type gradientSampler struct {
+	kind   model.GradientKind
+	spread model.GradientSpread
+	stops  []model.GradientStop
+	hasInv bool
+	inv    model.Matrix
+	x1     float64
+	y1     float64
+	dx     float64
+	dy     float64
+	den    float64
+	cx     float64
+	cy     float64
+	r      float64
+	fx     float64
+	fy     float64
+}
+
+func newGradientSampler(g model.Gradient, b bounds) gradientSampler {
+	s := gradientSampler{
+		kind:   g.Kind,
+		spread: g.Spread,
+		stops:  g.Stops,
+	}
 	if g.Transform != model.IdentityMatrix {
 		if inv, ok := g.Transform.Inverse(); ok {
-			gp = inv.Apply(p)
+			s.hasInv = true
+			s.inv = inv
 		}
+	}
+	if g.Kind == model.GradientKindLinear {
+		x1, y1, x2, y2 := linearGradientPoints(g, b)
+		s.x1 = x1
+		s.y1 = y1
+		s.dx = x2 - x1
+		s.dy = y2 - y1
+		s.den = s.dx*s.dx + s.dy*s.dy
+	} else {
+		s.cx, s.cy, s.r, s.fx, s.fy = radialGradientParams(g, b)
+	}
+	return s
+}
+
+func (s gradientSampler) sample(p model.Point) color.NRGBA {
+	gp := p
+	if s.hasInv {
+		gp = s.inv.Apply(p)
 	}
 
 	t := 0.0
-	if g.Kind == model.GradientKindLinear {
-		x1, y1, x2, y2 := linearGradientPoints(g, b)
-		dx := x2 - x1
-		dy := y2 - y1
-		den := dx*dx + dy*dy
-		if den > 1e-12 {
-			t = ((gp.X-x1)*dx + (gp.Y-y1)*dy) / den
+	if s.kind == model.GradientKindLinear {
+		if s.den > 1e-12 {
+			t = ((gp.X-s.x1)*s.dx + (gp.Y-s.y1)*s.dy) / s.den
 		}
 	} else {
-		cx, cy, r, fx, fy := radialGradientParams(g, b)
-		t = radialGradientT(gp.X, gp.Y, cx, cy, r, fx, fy)
+		t = radialGradientT(gp.X, gp.Y, s.cx, s.cy, s.r, s.fx, s.fy)
 	}
-	t = spreadT(t, g.Spread)
-	return colorAtStops(g.Stops, t)
+	t = spreadT(t, s.spread)
+	return colorAtStops(s.stops, t)
 }
 
 func linearGradientPoints(g model.Gradient, b bounds) (x1, y1, x2, y2 float64) {
