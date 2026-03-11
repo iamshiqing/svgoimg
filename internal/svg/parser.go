@@ -1,7 +1,6 @@
 package svg
 
 import (
-	"encoding/xml"
 	"fmt"
 	"io"
 	"math"
@@ -13,6 +12,17 @@ import (
 type context struct {
 	style     model.Style
 	transform model.Matrix
+	inDefs    bool
+}
+
+type parserState struct {
+	opts              Options
+	scene             model.Scene
+	rootSeen          bool
+	ids               map[string]*xmlNode
+	gradients         map[string]model.Gradient
+	gradientResolving map[string]bool
+	useDepth          map[string]int
 }
 
 func Parse(r io.Reader, opts Options) (model.Scene, error) {
@@ -21,121 +31,300 @@ func Parse(r io.Reader, opts Options) (model.Scene, error) {
 	}
 	opts = opts.withDefaults()
 
-	scene := model.Scene{
-		Width:   300,
-		Height:  150,
-		ViewBox: model.Rect{X: 0, Y: 0, W: 300, H: 150},
+	root, err := parseXMLTree(r)
+	if err != nil {
+		return model.Scene{}, err
 	}
 
-	stack := []context{{
+	p := &parserState{
+		opts: opts,
+		scene: model.Scene{
+			Width:     300,
+			Height:    150,
+			ViewBox:   model.Rect{X: 0, Y: 0, W: 300, H: 150},
+			Gradients: map[string]model.Gradient{},
+		},
+		ids:               map[string]*xmlNode{},
+		gradients:         map[string]model.Gradient{},
+		gradientResolving: map[string]bool{},
+		useDepth:          map[string]int{},
+	}
+
+	p.collectIDs(root)
+	err = p.walk(root, context{
 		style:     model.DefaultStyle(),
 		transform: model.IdentityMatrix,
-	}}
-	rootSeen := false
-	defsDepth := 0
-
-	dec := xml.NewDecoder(r)
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return model.Scene{}, fmt.Errorf("xml parse failed: %w", err)
-		}
-
-		switch t := tok.(type) {
-		case xml.StartElement:
-			name := strings.ToLower(t.Name.Local)
-			attrs := attrsMap(t.Attr)
-			parent := stack[len(stack)-1]
-
-			transform := parent.transform
-			if raw := attrs["transform"]; raw != "" {
-				m, err := parseTransform(raw)
-				if err != nil {
-					if opts.Mode == ParseStrict {
-						return model.Scene{}, fmt.Errorf("%s transform: %w", name, err)
-					}
-				} else {
-					transform = transform.Then(m)
-				}
-			}
-
-			style, err := applyStyleAttributes(parent.style, attrs, opts.Mode)
-			if err != nil {
-				return model.Scene{}, fmt.Errorf("%s style: %w", name, err)
-			}
-
-			stack = append(stack, context{
-				style:     style,
-				transform: transform,
-			})
-
-			if name == "defs" {
-				defsDepth++
-				continue
-			}
-			if name == "svg" && !rootSeen {
-				rootSeen = true
-				if err := parseRootSize(attrs, &scene); err != nil && opts.Mode == ParseStrict {
-					return model.Scene{}, err
-				}
-				continue
-			}
-			if defsDepth > 0 {
-				continue
-			}
-
-			if !style.Visible {
-				continue
-			}
-			path, ok, err := elementPath(name, attrs, scene.ViewBox, opts.CurveTolerance)
-			if err != nil {
-				if opts.Mode == ParseStrict {
-					return model.Scene{}, fmt.Errorf("%s parse failed: %w", name, err)
-				}
-				continue
-			}
-			if !ok {
-				continue
-			}
-			path = transformPath(path, transform)
-			if len(path.Subpaths) == 0 {
-				continue
-			}
-
-			cmdStyle := style
-			cmdStyle.StrokeWidth = style.StrokeWidth * transform.ApproxScale()
-			scene.Commands = append(scene.Commands, model.Command{
-				Path:  path,
-				Style: cmdStyle,
-			})
-
-		case xml.EndElement:
-			name := strings.ToLower(t.Name.Local)
-			if len(stack) > 1 {
-				stack = stack[:len(stack)-1]
-			}
-			if name == "defs" && defsDepth > 0 {
-				defsDepth--
-			}
-		}
+		inDefs:    false,
+	}, false)
+	if err != nil {
+		return model.Scene{}, err
 	}
 
-	return scene, nil
+	p.scene.Gradients = p.gradients
+	return p.scene, nil
 }
 
-func attrsMap(attrs []xml.Attr) map[string]string {
-	out := make(map[string]string, len(attrs))
-	for _, a := range attrs {
-		k := strings.ToLower(strings.TrimSpace(a.Name.Local))
-		if k == "" {
-			continue
-		}
-		out[k] = strings.TrimSpace(a.Value)
+func (p *parserState) collectIDs(node *xmlNode) {
+	if node == nil {
+		return
 	}
-	return out
+	if id := strings.TrimSpace(node.Attrs["id"]); id != "" {
+		p.ids[id] = node
+	}
+	for _, child := range node.Children {
+		p.collectIDs(child)
+	}
+}
+
+func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
+	if node == nil {
+		return nil
+	}
+	if node.Name == "__root__" {
+		for _, child := range node.Children {
+			if err := p.walk(child, ctx, renderDefs); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	name := node.Name
+	attrs := node.Attrs
+
+	transform := ctx.transform
+	if raw := attrs["transform"]; raw != "" {
+		m, err := parseTransform(raw)
+		if err != nil {
+			if p.opts.Mode == ParseStrict {
+				return fmt.Errorf("%s transform: %w", name, err)
+			}
+		} else {
+			transform = transform.Then(m)
+		}
+	}
+
+	style, err := applyStyleAttributes(ctx.style, attrs, p.opts.Mode)
+	if err != nil {
+		return fmt.Errorf("%s style: %w", name, err)
+	}
+
+	next := context{
+		style:     style,
+		transform: transform,
+		inDefs:    ctx.inDefs,
+	}
+
+	if name == "svg" && !p.rootSeen {
+		p.rootSeen = true
+		if err := parseRootSize(attrs, &p.scene); err != nil && p.opts.Mode == ParseStrict {
+			return err
+		}
+	}
+
+	if name == "defs" {
+		next.inDefs = true
+	}
+	if name == "symbol" && !renderDefs {
+		next.inDefs = true
+	}
+	if name == "symbol" && renderDefs {
+		next.inDefs = false
+	}
+
+	if name == "lineargradient" || name == "radialgradient" {
+		if id := strings.TrimSpace(attrs["id"]); id != "" {
+			_, err := p.ensureGradient(id)
+			if err != nil && p.opts.Mode == ParseStrict {
+				return err
+			}
+		}
+	}
+
+	if name == "use" {
+		if style.Visible && (!ctx.inDefs || renderDefs) {
+			if err := p.expandUse(node, next, renderDefs); err != nil {
+				if p.opts.Mode == ParseStrict {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	if style.Visible && (!next.inDefs || renderDefs) {
+		path, ok, err := elementPath(name, attrs, p.scene.ViewBox, p.opts.CurveTolerance)
+		if err != nil {
+			if p.opts.Mode == ParseStrict {
+				return fmt.Errorf("%s parse failed: %w", name, err)
+			}
+		} else if ok {
+			path = transformPath(path, transform)
+			if len(path.Subpaths) > 0 {
+				cmdStyle := style
+				cmdStyle.StrokeWidth = style.StrokeWidth * transform.ApproxScale()
+				if err := p.resolvePaintDependencies(&cmdStyle); err != nil {
+					if p.opts.Mode == ParseStrict {
+						return err
+					}
+				}
+				p.scene.Commands = append(p.scene.Commands, model.Command{
+					Path:  path,
+					Style: cmdStyle,
+				})
+			}
+		}
+	}
+
+	for _, child := range node.Children {
+		if err := p.walk(child, next, renderDefs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *parserState) resolvePaintDependencies(style *model.Style) error {
+	if style == nil {
+		return nil
+	}
+	resolve := func(paint *model.Paint) error {
+		if paint == nil || paint.None || paint.Kind != model.PaintKindGradient || paint.GradientID == "" {
+			return nil
+		}
+		ok, err := p.ensureGradient(paint.GradientID)
+		if err != nil {
+			return err
+		}
+		if !ok && !paint.HasFallback {
+			paint.None = true
+		}
+		return nil
+	}
+	if err := resolve(&style.Fill); err != nil {
+		return err
+	}
+	if err := resolve(&style.Stroke); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *parserState) expandUse(node *xmlNode, ctx context, renderDefs bool) error {
+	href := strings.TrimSpace(node.Attrs["href"])
+	if href == "" {
+		if p.opts.Mode == ParseStrict {
+			return fmt.Errorf("use element missing href")
+		}
+		return nil
+	}
+
+	id := refID(href)
+	if id == "" {
+		if p.opts.Mode == ParseStrict {
+			return fmt.Errorf("use href must reference #id, got %q", href)
+		}
+		return nil
+	}
+
+	target := p.ids[id]
+	if target == nil {
+		if p.opts.Mode == ParseStrict {
+			return fmt.Errorf("use reference %q not found", id)
+		}
+		return nil
+	}
+
+	if p.useDepth[id] >= 16 {
+		if p.opts.Mode == ParseStrict {
+			return fmt.Errorf("use reference cycle detected at %q", id)
+		}
+		return nil
+	}
+
+	vw, vh := p.scene.ViewBox.W, p.scene.ViewBox.H
+	if vw <= 0 {
+		vw = 300
+	}
+	if vh <= 0 {
+		vh = 150
+	}
+
+	tx, _ := parseAttrLength(node.Attrs, "x", vw, 0)
+	ty, _ := parseAttrLength(node.Attrs, "y", vh, 0)
+
+	useCtx := ctx
+	useCtx.transform = useCtx.transform.Then(model.Translate(tx, ty))
+
+	if target.Name == "symbol" {
+		if m, ok := symbolUseTransform(target, node.Attrs, p.scene.ViewBox); ok {
+			useCtx.transform = useCtx.transform.Then(m)
+		}
+	}
+
+	p.useDepth[id]++
+	err := p.walk(target, useCtx, true)
+	p.useDepth[id]--
+	return err
+}
+
+func refID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "#") {
+		return strings.TrimSpace(raw[1:])
+	}
+	if i := strings.IndexByte(raw, '#'); i >= 0 && i < len(raw)-1 {
+		return strings.TrimSpace(raw[i+1:])
+	}
+	return ""
+}
+
+func symbolUseTransform(symbol *xmlNode, useAttrs map[string]string, rootViewBox model.Rect) (model.Matrix, bool) {
+	vb, ok := parseViewBox(symbol.Attrs["viewbox"])
+	if !ok || vb.W <= 0 || vb.H <= 0 {
+		return model.IdentityMatrix, false
+	}
+
+	vw, vh := rootViewBox.W, rootViewBox.H
+	if vw <= 0 {
+		vw = 300
+	}
+	if vh <= 0 {
+		vh = 150
+	}
+
+	w, _ := parseAttrLength(useAttrs, "width", vw, vb.W)
+	h, _ := parseAttrLength(useAttrs, "height", vh, vb.H)
+	if w <= 0 {
+		w = vb.W
+	}
+	if h <= 0 {
+		h = vb.H
+	}
+
+	sx := w / vb.W
+	sy := h / vb.H
+	return model.Translate(-vb.X, -vb.Y).Then(model.Scale(sx, sy)), true
+}
+
+func parseViewBox(raw string) (model.Rect, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return model.Rect{}, false
+	}
+	nums, err := parseNumberList(raw)
+	if err != nil || len(nums) != 4 {
+		return model.Rect{}, false
+	}
+	return model.Rect{
+		X: nums[0],
+		Y: nums[1],
+		W: nums[2],
+		H: nums[3],
+	}, nums[2] > 0 && nums[3] > 0
 }
 
 func parseRootSize(attrs map[string]string, scene *model.Scene) error {

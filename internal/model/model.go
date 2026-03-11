@@ -6,10 +6,11 @@ import (
 )
 
 type Scene struct {
-	Width    float64
-	Height   float64
-	ViewBox  Rect
-	Commands []Command
+	Width     float64
+	Height    float64
+	ViewBox   Rect
+	Commands  []Command
+	Gradients map[string]Gradient
 }
 
 type Command struct {
@@ -137,6 +138,22 @@ func (m Matrix) ApproxScale() float64 {
 	return (sx + sy) * 0.5
 }
 
+func (m Matrix) Inverse() (Matrix, bool) {
+	det := m.A*m.D - m.B*m.C
+	if math.Abs(det) < 1e-12 || math.IsNaN(det) || math.IsInf(det, 0) {
+		return Matrix{}, false
+	}
+	invDet := 1.0 / det
+	return Matrix{
+		A: m.D * invDet,
+		B: -m.B * invDet,
+		C: -m.C * invDet,
+		D: m.A * invDet,
+		E: (m.C*m.F - m.D*m.E) * invDet,
+		F: (m.B*m.E - m.A*m.F) * invDet,
+	}, true
+}
+
 type FillRule uint8
 
 const (
@@ -144,9 +161,19 @@ const (
 	FillRuleEvenOdd
 )
 
+type PaintKind uint8
+
+const (
+	PaintKindSolid PaintKind = iota
+	PaintKindGradient
+)
+
 type Paint struct {
-	None  bool
-	Color color.NRGBA
+	None        bool
+	Kind        PaintKind
+	Color       color.NRGBA
+	GradientID  string
+	HasFallback bool
 }
 
 type Style struct {
@@ -161,13 +188,64 @@ type Style struct {
 	CurrentColor  color.NRGBA
 }
 
+type GradientKind uint8
+
+const (
+	GradientKindLinear GradientKind = iota
+	GradientKindRadial
+)
+
+type GradientUnits uint8
+
+const (
+	GradientUnitsObjectBoundingBox GradientUnits = iota
+	GradientUnitsUserSpaceOnUse
+)
+
+type GradientSpread uint8
+
+const (
+	GradientSpreadPad GradientSpread = iota
+	GradientSpreadRepeat
+	GradientSpreadReflect
+)
+
+type GradientStop struct {
+	Offset float64
+	Color  color.NRGBA
+}
+
+type Gradient struct {
+	ID        string
+	Kind      GradientKind
+	Units     GradientUnits
+	Spread    GradientSpread
+	Transform Matrix
+	Stops     []GradientStop
+
+	// Linear
+	X1 float64
+	Y1 float64
+	X2 float64
+	Y2 float64
+
+	// Radial
+	CX float64
+	CY float64
+	R  float64
+	FX float64
+	FY float64
+}
+
 func DefaultStyle() Style {
 	return Style{
 		Fill: Paint{
+			Kind:  PaintKindSolid,
 			Color: color.NRGBA{R: 0, G: 0, B: 0, A: 255},
 		},
 		Stroke: Paint{
 			None: true,
+			Kind: PaintKindSolid,
 		},
 		StrokeWidth:   1,
 		Opacity:       1,

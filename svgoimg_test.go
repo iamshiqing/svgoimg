@@ -65,10 +65,132 @@ func TestDecode_InvalidSize(t *testing.T) {
 	}
 }
 
+func TestDecode_DefsUseBasic(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <rect id="sq" x="0" y="0" width="8" height="8" fill="#ff0000"/>
+  </defs>
+  <use href="#sq" x="6" y="6"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	bg := color.NRGBAModel.Convert(img.At(2, 2)).(color.NRGBA)
+	usePx := color.NRGBAModel.Convert(img.At(8, 8)).(color.NRGBA)
+	if bg.A != 0 {
+		t.Fatalf("defs content should not render directly, pixel=%#v", bg)
+	}
+	if !isMostlyRed(usePx) {
+		t.Fatalf("use pixel = %#v, want red-like", usePx)
+	}
+}
+
+func TestDecode_DefsUseSymbolViewBox(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 10" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="s" viewBox="0 0 10 10">
+      <circle cx="5" cy="5" r="5" fill="#0000ff"/>
+    </symbol>
+  </defs>
+  <use href="#s" x="10" y="0" width="10" height="10"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	left := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	right := color.NRGBAModel.Convert(img.At(15, 5)).(color.NRGBA)
+	if left.A != 0 {
+		t.Fatalf("left side should be transparent, got %#v", left)
+	}
+	if !isMostlyBlue(right) {
+		t.Fatalf("right side should be blue-like, got %#v", right)
+	}
+}
+
+func TestDecode_LinearGradient(t *testing.T) {
+	svg := `<svg viewBox="0 0 100 10" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff0000"/>
+      <stop offset="100%" stop-color="#0000ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="10" fill="url(#g)"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	left := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	right := color.NRGBAModel.Convert(img.At(95, 5)).(color.NRGBA)
+	if !isMostlyRed(left) {
+		t.Fatalf("left gradient pixel = %#v, want red-like", left)
+	}
+	if !isMostlyBlue(right) {
+		t.Fatalf("right gradient pixel = %#v, want blue-like", right)
+	}
+}
+
+func TestDecode_LinearGradientHrefInherit(t *testing.T) {
+	svg := `<svg viewBox="0 0 10 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="base">
+      <stop offset="0%" stop-color="#ff0000"/>
+      <stop offset="100%" stop-color="#0000ff"/>
+    </linearGradient>
+    <linearGradient id="derived" href="#base" x1="0%" y1="0%" x2="0%" y2="100%"/>
+  </defs>
+  <rect x="0" y="0" width="10" height="100" fill="url(#derived)"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	top := color.NRGBAModel.Convert(img.At(5, 5)).(color.NRGBA)
+	bottom := color.NRGBAModel.Convert(img.At(5, 95)).(color.NRGBA)
+	if !isMostlyRed(top) {
+		t.Fatalf("top gradient pixel = %#v, want red-like", top)
+	}
+	if !isMostlyBlue(bottom) {
+		t.Fatalf("bottom gradient pixel = %#v, want blue-like", bottom)
+	}
+}
+
+func TestDecode_RadialGradient(t *testing.T) {
+	svg := `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="rg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="100" fill="url(#rg)"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	center := color.NRGBAModel.Convert(img.At(50, 50)).(color.NRGBA)
+	edge := color.NRGBAModel.Convert(img.At(5, 50)).(color.NRGBA)
+	if luminance(center) <= luminance(edge) {
+		t.Fatalf("radial gradient center should be brighter: center=%#v edge=%#v", center, edge)
+	}
+}
+
 func isMostlyWhite(c color.NRGBA) bool {
 	return c.R >= 240 && c.G >= 240 && c.B >= 240 && c.A >= 240
 }
 
 func isMostlyRed(c color.NRGBA) bool {
 	return c.R >= 200 && c.G <= 50 && c.B <= 50 && c.A >= 200
+}
+
+func isMostlyBlue(c color.NRGBA) bool {
+	return c.B >= 200 && c.R <= 50 && c.G <= 50 && c.A >= 200
+}
+
+func luminance(c color.NRGBA) float64 {
+	return 0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B)
 }

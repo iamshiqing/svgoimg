@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"strconv"
 	"strings"
+
+	"github.com/iamshiqing/svgoimg/internal/model"
 )
 
 var namedColors = map[string]color.NRGBA{
@@ -24,78 +26,129 @@ var namedColors = map[string]color.NRGBA{
 	"pink":    {R: 255, G: 192, B: 203, A: 255},
 }
 
-func parsePaint(raw string, currentColor color.NRGBA) (clr color.NRGBA, none bool, err error) {
+func parsePaint(raw string, currentColor color.NRGBA) (model.Paint, error) {
 	v := strings.TrimSpace(strings.ToLower(raw))
 	if v == "" {
-		return color.NRGBA{}, true, nil
+		return model.Paint{None: true}, nil
 	}
 	if v == "none" {
-		return color.NRGBA{}, true, nil
-	}
-	if v == "currentcolor" {
-		return currentColor, false, nil
+		return model.Paint{None: true}, nil
 	}
 	if strings.HasPrefix(v, "url(") {
-		// Gradient/pattern fallback: try parsing a trailing fallback color.
-		if idx := strings.Index(v, ")"); idx >= 0 && idx < len(v)-1 {
-			tail := strings.TrimSpace(v[idx+1:])
-			if tail != "" {
-				return parsePaint(tail, currentColor)
-			}
+		p, err := parseURLPaint(v, currentColor)
+		if err != nil {
+			return model.Paint{}, err
 		}
-		return currentColor, false, nil
+		return p, nil
+	}
+	c, err := parseColorToken(v, currentColor)
+	if err != nil {
+		return model.Paint{}, err
+	}
+	return model.Paint{
+		Kind:  model.PaintKindSolid,
+		Color: c,
+	}, nil
+}
+
+func parseURLPaint(raw string, currentColor color.NRGBA) (model.Paint, error) {
+	closeIdx := strings.IndexByte(raw, ')')
+	if closeIdx < 0 {
+		return model.Paint{}, fmt.Errorf("invalid paint url %q", raw)
+	}
+	ref := strings.TrimSpace(raw[len("url("):closeIdx])
+	id := ""
+	if strings.HasPrefix(ref, "#") {
+		id = strings.TrimPrefix(ref, "#")
+	} else if i := strings.IndexByte(ref, '#'); i >= 0 && i < len(ref)-1 {
+		id = ref[i+1:]
+	}
+	if id == "" {
+		return model.Paint{}, fmt.Errorf("paint url must reference an id, got %q", raw)
+	}
+
+	p := model.Paint{
+		Kind:       model.PaintKindGradient,
+		GradientID: id,
+	}
+
+	// Keep compatibility with common "url(#id) fallback" forms and provide
+	// a safe default fallback to currentColor if the gradient can't be resolved.
+	p.Color = currentColor
+	p.HasFallback = true
+
+	tail := strings.TrimSpace(raw[closeIdx+1:])
+	if tail != "" {
+		c, err := parseColorToken(tail, currentColor)
+		if err != nil {
+			return model.Paint{}, err
+		}
+		p.Color = c
+		p.HasFallback = true
+	}
+	return p, nil
+}
+
+func parseColorToken(raw string, currentColor color.NRGBA) (color.NRGBA, error) {
+	v := strings.TrimSpace(strings.ToLower(raw))
+	if v == "" {
+		return color.NRGBA{}, fmt.Errorf("empty color")
+	}
+	if v == "currentcolor" {
+		return currentColor, nil
 	}
 	if strings.HasPrefix(v, "#") {
-		return parseHexColor(v)
+		c, _, err := parseHexColor(v)
+		return c, err
 	}
 	if strings.HasPrefix(v, "rgb(") && strings.HasSuffix(v, ")") {
 		body := strings.TrimSpace(v[4 : len(v)-1])
 		parts := splitCSV(body)
 		if len(parts) != 3 {
-			return color.NRGBA{}, true, fmt.Errorf("invalid rgb() value %q", raw)
+			return color.NRGBA{}, fmt.Errorf("invalid rgb() value %q", raw)
 		}
 		r, err := parseRGBPart(parts[0])
 		if err != nil {
-			return color.NRGBA{}, true, err
+			return color.NRGBA{}, err
 		}
 		g, err := parseRGBPart(parts[1])
 		if err != nil {
-			return color.NRGBA{}, true, err
+			return color.NRGBA{}, err
 		}
 		b, err := parseRGBPart(parts[2])
 		if err != nil {
-			return color.NRGBA{}, true, err
+			return color.NRGBA{}, err
 		}
-		return color.NRGBA{R: r, G: g, B: b, A: 255}, false, nil
+		return color.NRGBA{R: r, G: g, B: b, A: 255}, nil
 	}
 	if strings.HasPrefix(v, "rgba(") && strings.HasSuffix(v, ")") {
 		body := strings.TrimSpace(v[5 : len(v)-1])
 		parts := splitCSV(body)
 		if len(parts) != 4 {
-			return color.NRGBA{}, true, fmt.Errorf("invalid rgba() value %q", raw)
+			return color.NRGBA{}, fmt.Errorf("invalid rgba() value %q", raw)
 		}
 		r, err := parseRGBPart(parts[0])
 		if err != nil {
-			return color.NRGBA{}, true, err
+			return color.NRGBA{}, err
 		}
 		g, err := parseRGBPart(parts[1])
 		if err != nil {
-			return color.NRGBA{}, true, err
+			return color.NRGBA{}, err
 		}
 		b, err := parseRGBPart(parts[2])
 		if err != nil {
-			return color.NRGBA{}, true, err
+			return color.NRGBA{}, err
 		}
 		a, err := parseAlphaPart(parts[3])
 		if err != nil {
-			return color.NRGBA{}, true, err
+			return color.NRGBA{}, err
 		}
-		return color.NRGBA{R: r, G: g, B: b, A: a}, false, nil
+		return color.NRGBA{R: r, G: g, B: b, A: a}, nil
 	}
 	if c, ok := namedColors[v]; ok {
-		return c, false, nil
+		return c, nil
 	}
-	return color.NRGBA{}, true, fmt.Errorf("unsupported color %q", raw)
+	return color.NRGBA{}, fmt.Errorf("unsupported color %q", raw)
 }
 
 func parseHexColor(v string) (color.NRGBA, bool, error) {

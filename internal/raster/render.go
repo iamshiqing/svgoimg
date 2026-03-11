@@ -50,12 +50,32 @@ func Render(scene model.Scene, opts Options) (*image.NRGBA, error) {
 		style.StrokeWidth = style.StrokeWidth * globalScale
 
 		if !style.Fill.None {
-			fillColor := applyAlpha(style.Fill.Color, style.Opacity*style.FillOpacity)
-			fillPath(img, path, fillColor, style.FillRule)
+			fillAlpha := style.Opacity * style.FillOpacity
+			if style.Fill.Kind == model.PaintKindGradient && style.Fill.GradientID != "" {
+				if g, ok := scene.Gradients[style.Fill.GradientID]; ok {
+					fillPathGradient(img, path, g, fillAlpha, style.FillRule)
+				} else if style.Fill.HasFallback {
+					fillColor := applyAlpha(style.Fill.Color, fillAlpha)
+					fillPath(img, path, fillColor, style.FillRule)
+				}
+			} else {
+				fillColor := applyAlpha(style.Fill.Color, fillAlpha)
+				fillPath(img, path, fillColor, style.FillRule)
+			}
 		}
 		if !style.Stroke.None && style.StrokeWidth > 0 {
-			strokeColor := applyAlpha(style.Stroke.Color, style.Opacity*style.StrokeOpacity)
-			strokePath(img, path, strokeColor, style.StrokeWidth)
+			strokeAlpha := style.Opacity * style.StrokeOpacity
+			if style.Stroke.Kind == model.PaintKindGradient && style.Stroke.GradientID != "" {
+				if g, ok := scene.Gradients[style.Stroke.GradientID]; ok {
+					strokePathGradient(img, path, g, strokeAlpha, style.StrokeWidth)
+				} else if style.Stroke.HasFallback {
+					strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
+					strokePath(img, path, strokeColor, style.StrokeWidth)
+				}
+			} else {
+				strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
+				strokePath(img, path, strokeColor, style.StrokeWidth)
+			}
 		}
 	}
 

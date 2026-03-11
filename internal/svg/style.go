@@ -21,35 +21,35 @@ func applyStyleAttributes(base model.Style, attrs map[string]string, mode ParseM
 	}
 
 	if v, ok := props["color"]; ok {
-		clr, none, err := parsePaint(v, style.CurrentColor)
+		clr, err := parseColorToken(v, style.CurrentColor)
 		if err != nil {
 			if mode == ParseStrict {
 				return style, fmt.Errorf("parse color: %w", err)
 			}
-		} else if !none {
+		} else {
 			style.CurrentColor = clr
 		}
 	}
 
 	if v, ok := props["fill"]; ok {
-		clr, none, err := parsePaint(v, style.CurrentColor)
+		p, err := parsePaint(v, style.CurrentColor)
 		if err != nil {
 			if mode == ParseStrict {
 				return style, fmt.Errorf("parse fill: %w", err)
 			}
 		} else {
-			style.Fill = model.Paint{Color: clr, None: none}
+			style.Fill = p
 		}
 	}
 
 	if v, ok := props["stroke"]; ok {
-		clr, none, err := parsePaint(v, style.CurrentColor)
+		p, err := parsePaint(v, style.CurrentColor)
 		if err != nil {
 			if mode == ParseStrict {
 				return style, fmt.Errorf("parse stroke: %w", err)
 			}
 		} else {
-			style.Stroke = model.Paint{Color: clr, None: none}
+			style.Stroke = p
 		}
 	}
 
