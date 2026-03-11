@@ -1,0 +1,9 @@
+<svg viewBox="0 0 50 30" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="m3"><rect x="10" y="6" width="22" height="12"/></mask>
+  </defs>
+  <rect width="50" height="30" fill="#e2e8f0"/>
+  <g transform="rotate(8 25 15)">
+    <rect x="8" y="4" width="30" height="18" fill="#7c3aed" mask="url(#m3)"/>
+  </g>
+</svg>

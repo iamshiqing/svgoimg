@@ -20,8 +20,12 @@ type parserState struct {
 	scene             model.Scene
 	rootSeen          bool
 	ids               map[string]*xmlNode
+	cssRules          []cssRule
+	markerCache       map[string]markerDef
 	gradients         map[string]model.Gradient
 	gradientResolving map[string]bool
+	patterns          map[string]model.Pattern
+	patternResolving  map[string]bool
 	useDepth          map[string]int
 }
 
@@ -43,14 +47,19 @@ func Parse(r io.Reader, opts Options) (model.Scene, error) {
 			Height:    150,
 			ViewBox:   model.Rect{X: 0, Y: 0, W: 300, H: 150},
 			Gradients: map[string]model.Gradient{},
+			Patterns:  map[string]model.Pattern{},
 		},
 		ids:               map[string]*xmlNode{},
+		markerCache:       map[string]markerDef{},
 		gradients:         map[string]model.Gradient{},
 		gradientResolving: map[string]bool{},
+		patterns:          map[string]model.Pattern{},
+		patternResolving:  map[string]bool{},
 		useDepth:          map[string]int{},
 	}
 
 	p.collectIDs(root)
+	p.collectCSS(root)
 	err = p.walk(root, context{
 		style:     model.DefaultStyle(),
 		transform: model.IdentityMatrix,
@@ -61,6 +70,7 @@ func Parse(r io.Reader, opts Options) (model.Scene, error) {
 	}
 
 	p.scene.Gradients = p.gradients
+	p.scene.Patterns = p.patterns
 	return p.scene, nil
 }
 
@@ -103,7 +113,7 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 	}
 
 	name := node.Name
-	attrs := node.Attrs
+	attrs := p.mergedAttrs(node)
 
 	transform := ctx.transform
 	if raw := attrs["transform"]; raw != "" {
@@ -160,6 +170,16 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 			}
 		}
 	}
+	if name == "pattern" {
+		if id := strings.TrimSpace(attrs["id"]); id != "" {
+			_, err := p.ensurePattern(id)
+			if err != nil {
+				if fatal := p.handleNonFatal(err); fatal != nil {
+					return fatal
+				}
+			}
+		}
+	}
 
 	if name == "use" {
 		if style.Visible && (!ctx.inDefs || renderDefs) {
@@ -173,6 +193,33 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 	}
 
 	if style.Visible && (!next.inDefs || renderDefs) {
+		clip, err := p.resolveClip(attrs, transform)
+		if err != nil {
+			if fatal := p.handleNonFatal(fmt.Errorf("%s clip-path: %w", name, err)); fatal != nil {
+				return fatal
+			}
+		}
+		maskRef, err := p.resolveMask(attrs, transform)
+		if err != nil {
+			if fatal := p.handleNonFatal(fmt.Errorf("%s mask: %w", name, err)); fatal != nil {
+				return fatal
+			}
+		}
+		if name == "image" {
+			imgDraw, ok, err := p.elementImage(attrs, transform, style)
+			if err != nil {
+				if fatal := p.handleNonFatal(fmt.Errorf("%s parse failed: %w", name, err)); fatal != nil {
+					return fatal
+				}
+			} else if ok {
+				p.scene.Commands = append(p.scene.Commands, model.Command{
+					Style: style,
+					Image: &imgDraw,
+					Clip:  clip,
+					Mask:  maskRef,
+				})
+			}
+		}
 		path, ok, err := elementPath(name, attrs, p.scene.ViewBox, p.opts.CurveTolerance)
 		if err != nil {
 			if fatal := p.handleNonFatal(fmt.Errorf("%s parse failed: %w", name, err)); fatal != nil {
@@ -182,7 +229,7 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 			path = transformPath(path, transform)
 			if len(path.Subpaths) > 0 {
 				cmdStyle := style
-				cmdStyle.StrokeWidth = style.StrokeWidth * transform.ApproxScale()
+				scaleStrokeStyle(&cmdStyle, transform.ApproxScale())
 				if err := p.resolvePaintDependencies(&cmdStyle); err != nil {
 					if fatal := p.handleNonFatal(err); fatal != nil {
 						return fatal
@@ -191,7 +238,17 @@ func (p *parserState) walk(node *xmlNode, ctx context, renderDefs bool) error {
 				p.scene.Commands = append(p.scene.Commands, model.Command{
 					Path:  path,
 					Style: cmdStyle,
+					Clip:  clip,
+					Mask:  maskRef,
 				})
+				markers, err := p.expandMarkers(attrs, path, cmdStyle)
+				if err != nil {
+					if fatal := p.handleNonFatal(err); fatal != nil {
+						return fatal
+					}
+				} else if len(markers) > 0 {
+					p.scene.Commands = append(p.scene.Commands, markers...)
+				}
 			}
 		}
 	}
@@ -216,7 +273,20 @@ func (p *parserState) resolvePaintDependencies(style *model.Style) error {
 		if err != nil {
 			return err
 		}
-		if !ok && !paint.HasFallback {
+		if ok {
+			return nil
+		}
+		patOK, err := p.ensurePattern(paint.GradientID)
+		if err != nil {
+			return err
+		}
+		if patOK {
+			paint.Kind = model.PaintKindPattern
+			paint.PatternID = paint.GradientID
+			paint.GradientID = ""
+			return nil
+		}
+		if !paint.HasFallback {
 			paint.None = true
 		}
 		return nil
@@ -475,4 +545,21 @@ func parseAttrLength(attrs map[string]string, key string, base float64, defaultV
 		return defaultValue, nil
 	}
 	return parseLength(raw, base)
+}
+
+func scaleStrokeStyle(style *model.Style, scale float64) {
+	if style == nil || scale == 1 {
+		return
+	}
+	style.StrokeWidth *= scale
+	if style.StrokeDashOffset != 0 {
+		style.StrokeDashOffset *= scale
+	}
+	if len(style.StrokeDashArray) > 0 {
+		scaled := make([]float64, len(style.StrokeDashArray))
+		for i, v := range style.StrokeDashArray {
+			scaled[i] = v * scale
+		}
+		style.StrokeDashArray = scaled
+	}
 }

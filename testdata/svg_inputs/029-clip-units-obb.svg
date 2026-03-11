@@ -1,0 +1,9 @@
+<svg viewBox="0 0 50 30" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="cp2">
+      <rect x="5" y="5" width="20" height="20"/>
+    </clipPath>
+  </defs>
+  <rect width="50" height="30" fill="#f1f5f9"/>
+  <rect x="2" y="2" width="46" height="26" fill="#2563eb" clip-path="url(#cp2)"/>
+</svg>

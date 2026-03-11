@@ -1,0 +1,8 @@
+<svg viewBox="0 0 70 30" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" markerWidth="4" markerHeight="4" refX="0" refY="2" orient="auto">
+      <path d="M0,0 L4,2 L0,4 Z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <line x1="8" y1="24" x2="60" y2="8" stroke="#111827" stroke-width="2" marker-end="url(#arr)"/>
+</svg>

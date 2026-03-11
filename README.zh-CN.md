@@ -11,7 +11,7 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 - 提供稳定、简单的库接口。
 - 提供合理项目布局、示例和中英文文档。
 
-## 当前支持（第 2 阶段）
+## 当前支持（第 3 阶段基础）
 
 ### 元素
 
@@ -20,7 +20,11 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 - `rect`（含圆角 `rx`/`ry`）
 - `circle`, `ellipse`
 - `line`, `polyline`, `polygon`
+- `image`（支持 data URI 的 PNG/JPEG/GIF）
+- `clipPath`, `mask`（基础几何掩膜管线）
+- `marker`, `pattern`（第 3 阶段基础覆盖）
 - `linearGradient`, `radialGradient`, `stop`
+- `style`（基础选择器支持）
 
 ### 路径命令
 
@@ -33,12 +37,24 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 ### 样式与变换
 
 - `fill`, `stroke`, `stroke-width`
+- `stroke-linecap`, `stroke-linejoin`, `stroke-miterlimit`
+- `stroke-dasharray`, `stroke-dashoffset`
 - `opacity`, `fill-opacity`, `stroke-opacity`（支持数字与百分比写法，如 `0.5` / `50%`）
 - `fill-rule`（`nonzero`, `evenodd`）
 - `transform`（`matrix`, `translate`, `scale`, `rotate`, `skewX`, `skewY`）
 - `style="..."`
+- marker 引用：`marker`, `marker-start`, `marker-mid`, `marker-end`
+- 裁剪/掩膜引用：`clip-path`, `mask`
 - 支持 paint server 引用：`fill="url(#id)"`、`stroke="url(#id)"`
 - 颜色支持：hex、`rgb(...)`、`rgba(...)`、`currentColor`、`transparent`，以及常见 CSS/SVG 命名色（如 `aliceblue`）
+
+### CSS
+
+- 支持 `<style>` 的基础选择器：
+- 元素选择器（如 `rect`）
+- 类选择器（如 `.btn`）
+- id 选择器（如 `#logo`）
+- 基础优先级（`element < class < id`，且内联属性仍优先）
 
 ### 渐变
 
@@ -49,12 +65,16 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 - 渐变 `href` / `xlink:href` 继承
 - `stop-color`、`stop-opacity`、`offset`、`style`
 
-### defs/use
+### defs/use / clip / mask / marker / pattern
 
 - 通过 `id` 解析可复用定义。
 - `use` 支持 `href`/`xlink:href`、`x`、`y`、`transform`。
 - 支持 `symbol + viewBox + use width/height` 的基础映射。
 - 增加循环引用保护，避免 `use` 无限递归。
+- 支持 `clipPath` 引用并按命令应用裁剪。
+- 支持 `mask` 引用（当前为几何掩膜基础实现）。
+- 支持 `marker` 的 `start/mid/end` 展开。
+- 支持 `pattern` 作为填充/描边画刷（含 userSpace/OBB 平铺）。
 
 ### 输出选项
 
@@ -70,10 +90,10 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 
 - `text`
 - 过滤器（`fe*`）
-- `clipPath` / `mask` / 复合混合
-- 完整 CSS 选择器级联
+- 完整 CSS 级联/复杂选择器/伪类
 - `symbol/use` 的完整 `preserveAspectRatio` 行为
-- 更高级的 paint server 与 filter 交互
+- 完整 SVG mask 复合模型（当前是几何掩膜基线）
+- 更高级的 paint server 与 filter 交互及完整规范一致性
 
 这些能力会按里程碑持续补齐。
 
@@ -198,11 +218,12 @@ go test . -bench BenchmarkDecode -benchmem
 
 ## 后续计划
 
-1. 改进描边拐角/端点与抗锯齿质量。
-2. 增加 `clipPath` 与 `mask`。
-3. 完善 `symbol/use` 视口与 `preserveAspectRatio` 覆盖。
-4. 持续扩展 filter 与 paint server 能力。
-5. 增加 parser/rasterizer 的 benchmark 与 fuzz 测试。
+1. 继续完善 `symbol/use` 与 `preserveAspectRatio` 的规范一致性。
+2. 将当前几何掩膜升级为完整 SVG mask 复合模型。
+3. 扩展 CSS（后代选择器、组合选择器、更完整级联规则）。
+4. 增加 `text` 渲染能力。
+5. 逐步补齐 `fe*` filter 能力。
+6. 增加 parser/rasterizer 的 fuzz 测试与更大规模基准集。
 
 ## 许可证
 

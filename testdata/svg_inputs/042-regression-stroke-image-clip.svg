@@ -1,0 +1,8 @@
+<svg viewBox="0 0 60 30" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="cp5"><rect x="6" y="4" width="48" height="22" rx="4"/></clipPath>
+  </defs>
+  <rect width="60" height="30" fill="#f8fafc"/>
+  <image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAE0lEQVR4nGL6z8DAwPAfEAAA//8HDgIB5wu+FwAAAABJRU5ErkJggg==" x="6" y="6" width="48" height="18" clip-path="url(#cp5)"/>
+  <polyline points="6,24 18,10 30,24 42,10 54,24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="5 3" marker-end="none"/>
+</svg>

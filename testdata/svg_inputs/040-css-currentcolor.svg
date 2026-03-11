@@ -1,0 +1,7 @@
+<svg viewBox="0 0 50 20" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .c { color: #8b5cf6; fill: currentColor; }
+  </style>
+  <rect class="c" x="2" y="2" width="20" height="16"/>
+  <rect x="28" y="2" width="20" height="16" style="color:#16a34a;fill:currentColor"/>
+</svg>

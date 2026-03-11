@@ -1,0 +1,7 @@
+<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="m1" mask-type="alpha"><circle cx="20" cy="20" r="12" fill="#fff"/></mask>
+  </defs>
+  <rect width="40" height="40" fill="#dbeafe"/>
+  <rect width="40" height="40" fill="#2563eb" mask="url(#m1)"/>
+</svg>

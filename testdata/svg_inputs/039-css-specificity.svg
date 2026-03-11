@@ -1,0 +1,9 @@
+<svg viewBox="0 0 50 20" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    rect { fill: #ef4444; }
+    .k { fill: #22c55e; }
+    #id1 { fill: #3b82f6; }
+  </style>
+  <rect id="id1" class="k" x="2" y="2" width="20" height="16"/>
+  <rect class="k" x="28" y="2" width="20" height="16" fill="#f59e0b"/>
+</svg>

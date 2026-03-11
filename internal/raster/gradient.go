@@ -57,12 +57,9 @@ func fillPathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alpha
 	}
 }
 
-func strokePathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alpha float64, width float64) {
-	if width <= 0 {
-		return
-	}
-	segments := strokeSegments(path)
-	if len(segments) == 0 {
+func strokePathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alpha float64, style model.Style) {
+	geo, ok := prepareStrokeGeometry(path, style)
+	if !ok {
 		return
 	}
 	paintBounds, ok := pathBounds(path)
@@ -70,17 +67,10 @@ func strokePathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alp
 		return
 	}
 
-	half := width * 0.5
-	halfSq := half * half
-
-	b, ok := strokeSegmentsBounds(segments, half)
-	if !ok {
-		return
-	}
-	minX := clampInt(int(math.Floor(b.minX)), 0, img.Bounds().Dx()-1)
-	maxX := clampInt(int(math.Ceil(b.maxX)), 0, img.Bounds().Dx()-1)
-	minY := clampInt(int(math.Floor(b.minY)), 0, img.Bounds().Dy()-1)
-	maxY := clampInt(int(math.Ceil(b.maxY)), 0, img.Bounds().Dy()-1)
+	minX := clampInt(int(math.Floor(geo.bounds.minX)), 0, img.Bounds().Dx()-1)
+	maxX := clampInt(int(math.Ceil(geo.bounds.maxX)), 0, img.Bounds().Dx()-1)
+	minY := clampInt(int(math.Floor(geo.bounds.minY)), 0, img.Bounds().Dy()-1)
+	maxY := clampInt(int(math.Ceil(geo.bounds.maxY)), 0, img.Bounds().Dy()-1)
 	if minX > maxX || minY > maxY {
 		return
 	}
@@ -93,7 +83,7 @@ func strokePathGradient(img *image.NRGBA, path model.Path, g model.Gradient, alp
 				px := float64(x) + s[0]
 				py := float64(y) + s[1]
 				p := model.Point{X: px, Y: py}
-				if pointOnStroke(p, segments, half, halfSq) {
+				if pointOnStrokeGeometry(p, geo) {
 					hit++
 				}
 			}

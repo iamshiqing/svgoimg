@@ -1,6 +1,7 @@
 package model
 
 import (
+	"image"
 	"image/color"
 	"math"
 )
@@ -11,11 +12,39 @@ type Scene struct {
 	ViewBox   Rect
 	Commands  []Command
 	Gradients map[string]Gradient
+	Patterns  map[string]Pattern
 }
 
 type Command struct {
 	Path  Path
 	Style Style
+	Image *ImageDraw
+	Clip  *ClipPath
+	Mask  *MaskRef
+}
+
+type ImageDraw struct {
+	Img     image.Image
+	Opacity float64
+	// Content parallelogram (top-left, top-right, bottom-left) in scene coordinates.
+	P0 Point
+	P1 Point
+	P3 Point
+	// Viewport clip parallelogram (top-left, top-right, bottom-left) in scene coordinates.
+	C0 Point
+	C1 Point
+	C3 Point
+}
+
+type ClipPath struct {
+	Path Path
+	Rule FillRule
+}
+
+type MaskRef struct {
+	Path      Path
+	Rule      FillRule
+	Luminance bool
 }
 
 type Path struct {
@@ -166,6 +195,7 @@ type PaintKind uint8
 const (
 	PaintKindSolid PaintKind = iota
 	PaintKindGradient
+	PaintKindPattern
 )
 
 type Paint struct {
@@ -173,20 +203,42 @@ type Paint struct {
 	Kind        PaintKind
 	Color       color.NRGBA
 	GradientID  string
+	PatternID   string
 	HasFallback bool
 }
 
 type Style struct {
-	Fill          Paint
-	Stroke        Paint
-	StrokeWidth   float64
-	Opacity       float64
-	FillOpacity   float64
-	StrokeOpacity float64
-	FillRule      FillRule
-	Visible       bool
-	CurrentColor  color.NRGBA
+	Fill             Paint
+	Stroke           Paint
+	StrokeWidth      float64
+	StrokeLineCap    StrokeLineCap
+	StrokeLineJoin   StrokeLineJoin
+	StrokeMiterLimit float64
+	StrokeDashArray  []float64
+	StrokeDashOffset float64
+	Opacity          float64
+	FillOpacity      float64
+	StrokeOpacity    float64
+	FillRule         FillRule
+	Visible          bool
+	CurrentColor     color.NRGBA
 }
+
+type StrokeLineCap uint8
+
+const (
+	StrokeLineCapButt StrokeLineCap = iota
+	StrokeLineCapRound
+	StrokeLineCapSquare
+)
+
+type StrokeLineJoin uint8
+
+const (
+	StrokeLineJoinMiter StrokeLineJoin = iota
+	StrokeLineJoinRound
+	StrokeLineJoinBevel
+)
 
 type GradientKind uint8
 
@@ -237,6 +289,24 @@ type Gradient struct {
 	FY float64
 }
 
+type PatternUnits uint8
+
+const (
+	PatternUnitsObjectBoundingBox PatternUnits = iota
+	PatternUnitsUserSpaceOnUse
+)
+
+type Pattern struct {
+	ID        string
+	Units     PatternUnits
+	Transform Matrix
+	X         float64
+	Y         float64
+	W         float64
+	H         float64
+	Commands  []Command
+}
+
 func DefaultStyle() Style {
 	return Style{
 		Fill: Paint{
@@ -247,12 +317,15 @@ func DefaultStyle() Style {
 			None: true,
 			Kind: PaintKindSolid,
 		},
-		StrokeWidth:   1,
-		Opacity:       1,
-		FillOpacity:   1,
-		StrokeOpacity: 1,
-		FillRule:      FillRuleNonZero,
-		Visible:       true,
-		CurrentColor:  color.NRGBA{R: 0, G: 0, B: 0, A: 255},
+		StrokeWidth:      1,
+		StrokeLineCap:    StrokeLineCapButt,
+		StrokeLineJoin:   StrokeLineJoinMiter,
+		StrokeMiterLimit: 4,
+		Opacity:          1,
+		FillOpacity:      1,
+		StrokeOpacity:    1,
+		FillRule:         FillRuleNonZero,
+		Visible:          true,
+		CurrentColor:     color.NRGBA{R: 0, G: 0, B: 0, A: 255},
 	}
 }

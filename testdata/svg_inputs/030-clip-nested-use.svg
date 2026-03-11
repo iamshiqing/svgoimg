@@ -1,0 +1,8 @@
+<svg viewBox="0 0 50 30" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <rect id="shape" x="0" y="0" width="18" height="18"/>
+    <clipPath id="cp3"><use href="#shape" x="4" y="6"/></clipPath>
+  </defs>
+  <rect width="50" height="30" fill="#f8fafc"/>
+  <rect width="50" height="30" fill="#16a34a" clip-path="url(#cp3)"/>
+</svg>

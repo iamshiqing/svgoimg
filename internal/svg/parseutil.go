@@ -88,6 +88,43 @@ func parseLength(raw string, percentBase float64) (float64, error) {
 	}
 }
 
+func parseLengthList(raw string, percentBase float64) ([]float64, error) {
+	items := splitList(raw)
+	out := make([]float64, 0, len(items))
+	for _, item := range items {
+		v, err := parseLength(item, percentBase)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+func splitList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', ' ', '\t', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 func finite(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }

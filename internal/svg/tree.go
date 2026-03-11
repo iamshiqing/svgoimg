@@ -10,6 +10,7 @@ import (
 type xmlNode struct {
 	Name     string
 	Attrs    map[string]string
+	Text     string
 	Children []*xmlNode
 }
 
@@ -42,6 +43,11 @@ func parseXMLTree(r io.Reader) (*xmlNode, error) {
 			if len(stack) > 1 {
 				stack = stack[:len(stack)-1]
 			}
+		case xml.CharData:
+			if len(stack) == 0 {
+				continue
+			}
+			stack[len(stack)-1].Text += string(t)
 		}
 	}
 	return root, nil

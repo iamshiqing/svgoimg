@@ -20,7 +20,11 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 - `rect` (including rounded corners `rx`/`ry`)
 - `circle`, `ellipse`
 - `line`, `polyline`, `polygon`
+- `image` (data URI PNG/JPEG/GIF)
+- `clipPath`, `mask` (basic geometry mask pipeline)
+- `marker`, `pattern` (phase-3 baseline coverage)
 - `linearGradient`, `radialGradient`, `stop`
+- `style` (basic selector support)
 
 ### Path commands
 
@@ -33,12 +37,24 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 ### Styling
 
 - `fill`, `stroke`, `stroke-width`
+- `stroke-linecap`, `stroke-linejoin`, `stroke-miterlimit`
+- `stroke-dasharray`, `stroke-dashoffset`
 - `opacity`, `fill-opacity`, `stroke-opacity` (supports number and percent forms like `0.5` / `50%`)
 - `fill-rule` (`nonzero`, `evenodd`)
 - `transform` (`matrix`, `translate`, `scale`, `rotate`, `skewX`, `skewY`)
 - `style="..."`
+- marker references: `marker`, `marker-start`, `marker-mid`, `marker-end`
+- clipping/masking references: `clip-path`, `mask`
 - paint server reference: `fill="url(#id)"`, `stroke="url(#id)"`
 - color formats: hex, `rgb(...)`, `rgba(...)`, `currentColor`, `transparent`, and common CSS/SVG named colors (for example `aliceblue`)
+
+### CSS
+
+- Inline `<style>` support for simple selectors:
+- element selector (e.g. `rect`)
+- class selector (e.g. `.btn`)
+- id selector (e.g. `#logo`)
+- basic specificity order (`element < class < id`, inline attributes still override)
 
 ### Gradients
 
@@ -49,12 +65,16 @@ Pure-Go SVG renderer that converts SVG into Go `image.Image` with built-in `defs
 - gradient inheritance via `href` / `xlink:href`
 - `stop-color`, `stop-opacity`, `offset`, inline `style`
 
-### defs/use
+### defs/use / clip / mask / marker / pattern
 
 - Resolve reusable definitions by id.
 - `use` supports `href`/`xlink:href`, `x`, `y`, `transform`.
 - `symbol` + `viewBox` + `use width/height` basic mapping.
 - Circular `use` references are guarded.
+- `clipPath` references are resolved and applied per command.
+- `mask` references are resolved with geometry-based alpha masking baseline.
+- `marker` references are expanded at `start/mid/end`.
+- `pattern` paint server supports user-space and object-bounding-box tile modes.
 
 ### Rendering options
 
@@ -70,10 +90,10 @@ When using `ParseWarn`, non-fatal parse issues are reported through `OnWarning` 
 
 - `text`
 - Filters (`fe*`)
-- Clip/mask/composite effects
-- Full CSS cascade/selectors
+- Full CSS cascade/selectors/pseudo-classes
 - Full `preserveAspectRatio` behavior for `symbol/use`
-- Advanced paint servers and filter interactions
+- Full SVG mask compositing model (current baseline is geometry masking)
+- Advanced paint server/filter interactions and full spec parity
 
 These are planned in incremental milestones.
 
@@ -198,11 +218,12 @@ go test . -bench BenchmarkDecode -benchmem
 
 ## Roadmap
 
-1. Improve stroke joins/caps and anti-aliasing quality.
-2. Add clip-path and mask.
-3. Improve `symbol/use` viewport and `preserveAspectRatio` coverage.
-4. Add filter and paint server extensions incrementally.
-5. Add benchmark suite and fuzz tests for parser/rasterizer.
+1. Expand `symbol/use` + `preserveAspectRatio` toward full spec behavior.
+2. Upgrade mask pipeline from geometry baseline to full SVG compositing semantics.
+3. Extend CSS support (descendant selectors, grouped selectors, richer cascade).
+4. Add `text` rendering support.
+5. Add filter primitives (`fe*`) incrementally.
+6. Add parser/rasterizer fuzz tests and larger benchmark suites.
 
 ## License
 
