@@ -525,9 +525,48 @@ func TestDecode_CSSBasicSelectors(t *testing.T) {
 		t.Fatalf("DecodeString failed: %v", err)
 	}
 	center := color.NRGBAModel.Convert(img.At(10, 10)).(color.NRGBA)
-	// Inline attribute should override CSS selector results.
-	if center.G < 200 || center.R > 60 || center.B > 60 {
-		t.Fatalf("inline fill should override CSS, got %#v", center)
+	// CSS selectors should override presentation attributes; ID beats class/tag.
+	if !isMostlyBlue(center) {
+		t.Fatalf("id selector should override class/tag/presentation attribute, got %#v", center)
+	}
+}
+
+func TestDecode_CSSInlineStyleOverridesSelectors(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    rect { fill: #ff0000; }
+    .k { fill: #00ff00; }
+    #a { fill: #0000ff; }
+  </style>
+  <rect id="a" class="k" x="0" y="0" width="20" height="20" fill="#00ff00" style="fill:#f59e0b"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	center := color.NRGBAModel.Convert(img.At(10, 10)).(color.NRGBA)
+	want := color.NRGBA{R: 245, G: 158, B: 11, A: 255}
+	if !isNearColor(center, want, 4) {
+		t.Fatalf("inline style should override selectors and presentation attrs, got %#v", center)
+	}
+}
+
+func TestDecode_MaskLuminanceDefaultBlackMasksOut(t *testing.T) {
+	svg := `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="m">
+      <rect x="2" y="2" width="16" height="16"/>
+    </mask>
+  </defs>
+  <rect width="20" height="20" fill="#ff0000" mask="url(#m)"/>
+</svg>`
+	img, err := DecodeString(svg, nil)
+	if err != nil {
+		t.Fatalf("DecodeString failed: %v", err)
+	}
+	center := color.NRGBAModel.Convert(img.At(10, 10)).(color.NRGBA)
+	if center.A != 0 {
+		t.Fatalf("default black luminance mask should mask content out, got %#v", center)
 	}
 }
 

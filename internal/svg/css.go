@@ -134,6 +134,9 @@ func parseSimpleSelector(raw string) (cssSelector, int, bool) {
 
 func (p *parserState) mergedAttrs(node *xmlNode) map[string]string {
 	out := make(map[string]string, len(node.Attrs)+8)
+	for k, v := range node.Attrs {
+		out[k] = v
+	}
 	if len(p.cssRules) > 0 {
 		matched := make([]cssRule, 0, 8)
 		for _, rule := range p.cssRules {
@@ -152,9 +155,6 @@ func (p *parserState) mergedAttrs(node *xmlNode) map[string]string {
 				out[k] = v
 			}
 		}
-	}
-	for k, v := range node.Attrs {
-		out[k] = v
 	}
 	return out
 }

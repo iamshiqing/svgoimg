@@ -42,8 +42,7 @@ type ClipPath struct {
 }
 
 type MaskRef struct {
-	Path      Path
-	Rule      FillRule
+	Commands  []Command
 	Luminance bool
 }
 

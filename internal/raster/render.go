@@ -48,96 +48,99 @@ func Render(scene model.Scene, opts Options) (*image.NRGBA, error) {
 	globalScale := global.ApproxScale()
 
 	for _, cmd := range scene.Commands {
-		var clip *clipRaster
-		if cmd.Clip != nil {
-			clipPath := transformPath(cmd.Clip.Path, global)
-			clip = newClipRaster(clipPath, cmd.Clip.Rule)
-		}
-		var mask *maskRaster
-		if cmd.Mask != nil {
-			maskPath := transformPath(cmd.Mask.Path, global)
-			mask = newMaskRaster(maskPath, cmd.Mask.Rule, cmd.Mask.Luminance)
-		}
-
-		targetImg := img
-		var tmp *image.NRGBA
-		if clip != nil || mask != nil {
-			tmp = image.NewNRGBA(img.Bounds())
-			targetImg = tmp
-		}
-
-		if cmd.Image != nil {
-			renderImage(targetImg, *cmd.Image, global)
-		} else {
-			path := transformPath(cmd.Path, global)
-			if len(path.Subpaths) == 0 {
-				continue
-			}
-
-			style := cmd.Style
-			scaleStrokeStyle(&style, globalScale)
-
-			if !style.Fill.None {
-				fillAlpha := style.Opacity * style.FillOpacity
-				switch style.Fill.Kind {
-				case model.PaintKindGradient:
-					if style.Fill.GradientID != "" {
-						if g, ok := scene.Gradients[style.Fill.GradientID]; ok {
-							fillPathGradient(targetImg, path, g, fillAlpha, style.FillRule)
-						} else if style.Fill.HasFallback {
-							fillColor := applyAlpha(style.Fill.Color, fillAlpha)
-							fillPath(targetImg, path, fillColor, style.FillRule)
-						}
-					}
-				case model.PaintKindPattern:
-					if style.Fill.PatternID != "" {
-						if pat, ok := scene.Patterns[style.Fill.PatternID]; ok {
-							fillPathPattern(targetImg, path, pat, fillAlpha, style.FillRule)
-						} else if style.Fill.HasFallback {
-							fillColor := applyAlpha(style.Fill.Color, fillAlpha)
-							fillPath(targetImg, path, fillColor, style.FillRule)
-						}
-					}
-				default:
-					fillColor := applyAlpha(style.Fill.Color, fillAlpha)
-					fillPath(targetImg, path, fillColor, style.FillRule)
-				}
-			}
-
-			if !style.Stroke.None && style.StrokeWidth > 0 {
-				strokeAlpha := style.Opacity * style.StrokeOpacity
-				switch style.Stroke.Kind {
-				case model.PaintKindGradient:
-					if style.Stroke.GradientID != "" {
-						if g, ok := scene.Gradients[style.Stroke.GradientID]; ok {
-							strokePathGradient(targetImg, path, g, strokeAlpha, style)
-						} else if style.Stroke.HasFallback {
-							strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
-							strokePath(targetImg, path, strokeColor, style)
-						}
-					}
-				case model.PaintKindPattern:
-					if style.Stroke.PatternID != "" {
-						if pat, ok := scene.Patterns[style.Stroke.PatternID]; ok {
-							strokePathPattern(targetImg, path, pat, strokeAlpha, style)
-						} else if style.Stroke.HasFallback {
-							strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
-							strokePath(targetImg, path, strokeColor, style)
-						}
-					}
-				default:
-					strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
-					strokePath(targetImg, path, strokeColor, style)
-				}
-			}
-		}
-
-		if tmp != nil {
-			compositeWithFilters(img, tmp, clip, mask)
-		}
+		renderCommand(img, scene, global, globalScale, cmd)
 	}
 
 	return img, nil
+}
+
+func renderCommand(dst *image.NRGBA, scene model.Scene, global model.Matrix, globalScale float64, cmd model.Command) {
+	var clip *clipRaster
+	if cmd.Clip != nil {
+		clipPath := transformPath(cmd.Clip.Path, global)
+		clip = newClipRaster(clipPath, cmd.Clip.Rule)
+	}
+	var mask *maskRaster
+	if cmd.Mask != nil {
+		mask = newMaskRaster(scene, cmd.Mask, global, dst.Bounds())
+	}
+
+	targetImg := dst
+	var tmp *image.NRGBA
+	if clip != nil || mask != nil {
+		tmp = image.NewNRGBA(dst.Bounds())
+		targetImg = tmp
+	}
+
+	if cmd.Image != nil {
+		renderImage(targetImg, *cmd.Image, global)
+	} else {
+		path := transformPath(cmd.Path, global)
+		if len(path.Subpaths) == 0 {
+			return
+		}
+
+		style := cmd.Style
+		scaleStrokeStyle(&style, globalScale)
+
+		if !style.Fill.None {
+			fillAlpha := style.Opacity * style.FillOpacity
+			switch style.Fill.Kind {
+			case model.PaintKindGradient:
+				if style.Fill.GradientID != "" {
+					if g, ok := scene.Gradients[style.Fill.GradientID]; ok {
+						fillPathGradient(targetImg, path, g, fillAlpha, style.FillRule)
+					} else if style.Fill.HasFallback {
+						fillColor := applyAlpha(style.Fill.Color, fillAlpha)
+						fillPath(targetImg, path, fillColor, style.FillRule)
+					}
+				}
+			case model.PaintKindPattern:
+				if style.Fill.PatternID != "" {
+					if pat, ok := scene.Patterns[style.Fill.PatternID]; ok {
+						fillPathPattern(targetImg, path, pat, fillAlpha, style.FillRule)
+					} else if style.Fill.HasFallback {
+						fillColor := applyAlpha(style.Fill.Color, fillAlpha)
+						fillPath(targetImg, path, fillColor, style.FillRule)
+					}
+				}
+			default:
+				fillColor := applyAlpha(style.Fill.Color, fillAlpha)
+				fillPath(targetImg, path, fillColor, style.FillRule)
+			}
+		}
+
+		if !style.Stroke.None && style.StrokeWidth > 0 {
+			strokeAlpha := style.Opacity * style.StrokeOpacity
+			switch style.Stroke.Kind {
+			case model.PaintKindGradient:
+				if style.Stroke.GradientID != "" {
+					if g, ok := scene.Gradients[style.Stroke.GradientID]; ok {
+						strokePathGradient(targetImg, path, g, strokeAlpha, style)
+					} else if style.Stroke.HasFallback {
+						strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
+						strokePath(targetImg, path, strokeColor, style)
+					}
+				}
+			case model.PaintKindPattern:
+				if style.Stroke.PatternID != "" {
+					if pat, ok := scene.Patterns[style.Stroke.PatternID]; ok {
+						strokePathPattern(targetImg, path, pat, strokeAlpha, style)
+					} else if style.Stroke.HasFallback {
+						strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
+						strokePath(targetImg, path, strokeColor, style)
+					}
+				}
+			default:
+				strokeColor := applyAlpha(style.Stroke.Color, strokeAlpha)
+				strokePath(targetImg, path, strokeColor, style)
+			}
+		}
+	}
+
+	if tmp != nil {
+		compositeWithFilters(dst, tmp, clip, mask)
+	}
 }
 
 type rect struct {
@@ -564,39 +567,44 @@ func (c *clipRaster) contains(px, py float64) bool {
 }
 
 type maskRaster struct {
-	edges     []edge
-	rule      model.FillRule
+	img       *image.NRGBA
 	luminance bool
 }
 
-func newMaskRaster(path model.Path, rule model.FillRule, luminance bool) *maskRaster {
-	edges := closedEdges(path)
-	if len(edges) == 0 {
+func newMaskRaster(scene model.Scene, ref *model.MaskRef, global model.Matrix, bounds image.Rectangle) *maskRaster {
+	if ref == nil {
 		return nil
 	}
+	img := image.NewNRGBA(bounds)
+	globalScale := global.ApproxScale()
+	for _, cmd := range ref.Commands {
+		renderCommand(img, scene, global, globalScale, cmd)
+	}
 	return &maskRaster{
-		edges:     edges,
-		rule:      rule,
-		luminance: luminance,
+		img:       img,
+		luminance: ref.Luminance,
 	}
 }
 
 func (m *maskRaster) alphaAt(px, py float64) float64 {
-	if m == nil || len(m.edges) == 0 {
+	if m == nil || m.img == nil {
 		return 1
 	}
-	var inside bool
-	if m.rule == model.FillRuleEvenOdd {
-		inside = pointInEvenOdd(px, py, m.edges)
-	} else {
-		inside = pointInNonZero(px, py, m.edges)
-	}
-	if !inside {
+	x := int(math.Floor(px))
+	y := int(math.Floor(py))
+	if x < m.img.Bounds().Min.X || x >= m.img.Bounds().Max.X || y < m.img.Bounds().Min.Y || y >= m.img.Bounds().Max.Y {
 		return 0
 	}
-	// Current pure-Go mask implementation uses geometry mask coverage.
-	// Luminance/alpha mask channels are intentionally simplified for phase-3 baseline.
-	return 1
+	i := m.img.PixOffset(x, y)
+	alpha := float64(m.img.Pix[i+3]) / 255.0
+	if alpha <= 0 {
+		return 0
+	}
+	if !m.luminance {
+		return alpha
+	}
+	lum := 0.2126*float64(m.img.Pix[i+0]) + 0.7152*float64(m.img.Pix[i+1]) + 0.0722*float64(m.img.Pix[i+2])
+	return clamp01(alpha * lum / 255.0)
 }
 
 func prepareStrokeGeometry(path model.Path, style model.Style) (strokeGeometry, bool) {
@@ -896,9 +904,11 @@ func buildStrokeJoin(p0, p1, p2 model.Point, join model.StrokeLineJoin, miterLim
 	}
 	n1x, n1y := -u1y, u1x
 	n2x, n2y := -u2y, u2x
-	side := 1.0
+	// SVG raster coordinates have +Y downward, so the exterior join side is flipped
+	// relative to the usual Cartesian cross-product sign.
+	side := -1.0
 	if cross < 0 {
-		side = -1
+		side = 1
 	}
 	n1x *= side
 	n1y *= side
@@ -1136,6 +1146,7 @@ func applyDash(path model.Path, dash []float64, offset float64) model.Path {
 		if len(sp.Points) < 2 {
 			continue
 		}
+		local := make([]model.Subpath, 0, len(sp.Points))
 		patIdx := startIdx
 		patRemain := remain
 		patOn := patIdx%2 == 0
@@ -1143,7 +1154,7 @@ func applyDash(path model.Path, dash []float64, offset float64) model.Path {
 		var cur *model.Subpath
 		flush := func() {
 			if cur != nil && len(cur.Points) >= 2 {
-				out.Subpaths = append(out.Subpaths, *cur)
+				local = append(local, *cur)
 			}
 			cur = nil
 		}
@@ -1199,6 +1210,21 @@ func applyDash(path model.Path, dash []float64, offset float64) model.Path {
 			emitEdge(sp.Points[len(sp.Points)-1], sp.Points[0])
 		}
 		flush()
+		if sp.Closed && len(local) >= 2 {
+			first := local[0]
+			last := local[len(local)-1]
+			seam := sp.Points[0]
+			if len(first.Points) >= 2 && len(last.Points) >= 2 &&
+				first.Points[0].Equal(seam) &&
+				last.Points[len(last.Points)-1].Equal(seam) {
+				merged := model.Subpath{
+					Closed: false,
+					Points: append(append([]model.Point{}, last.Points...), first.Points[1:]...),
+				}
+				local = append([]model.Subpath{merged}, local[1:len(local)-1]...)
+			}
+		}
+		out.Subpaths = append(out.Subpaths, local...)
 	}
 
 	return out

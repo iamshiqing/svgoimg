@@ -155,13 +155,9 @@ func (p *parserState) resolveMask(attrs map[string]string, elementTransform mode
 		return nil, fmt.Errorf("reference %q is not a mask", id)
 	}
 
-	path, rule, err := p.buildMaskPath(node)
+	commands, err := p.buildMaskCommands(node, elementTransform)
 	if err != nil {
 		return nil, err
-	}
-	path = transformPath(path, elementTransform)
-	if len(path.Subpaths) == 0 {
-		return nil, nil
 	}
 	luminance := true
 	maskType := strings.TrimSpace(strings.ToLower(node.Attrs["mask-type"]))
@@ -169,8 +165,7 @@ func (p *parserState) resolveMask(attrs map[string]string, elementTransform mode
 		luminance = false
 	}
 	return &model.MaskRef{
-		Path:      path,
-		Rule:      rule,
+		Commands:  commands,
 		Luminance: luminance,
 	}, nil
 }
@@ -201,21 +196,89 @@ func parseURLRef(raw string) (string, error) {
 	return refID(raw), nil
 }
 
-func (p *parserState) buildMaskPath(node *xmlNode) (model.Path, model.FillRule, error) {
-	rule := parseClipRule(node.Attrs)
-	base := model.IdentityMatrix
+func (p *parserState) buildMaskCommands(node *xmlNode, elementTransform model.Matrix) ([]model.Command, error) {
+	base := elementTransform
 	if raw := strings.TrimSpace(node.Attrs["transform"]); raw != "" {
 		m, err := parseTransform(raw)
 		if err != nil {
-			return model.Path{}, model.FillRuleNonZero, fmt.Errorf("mask transform: %w", err)
+			return nil, fmt.Errorf("mask transform: %w", err)
 		}
 		base = m.Then(base)
 	}
-	out := model.Path{Subpaths: make([]model.Subpath, 0, 8)}
+	out := make([]model.Command, 0, 8)
 	for _, child := range node.Children {
-		if err := p.walkClipNode(child, base, &out); err != nil {
-			return model.Path{}, model.FillRuleNonZero, err
+		if err := p.walkMaskNode(child, model.DefaultStyle(), base, &out); err != nil {
+			return nil, err
 		}
 	}
-	return out, rule, nil
+	return out, nil
+}
+
+func (p *parserState) walkMaskNode(node *xmlNode, inherited model.Style, parentTransform model.Matrix, out *[]model.Command) error {
+	if node == nil {
+		return nil
+	}
+	attrs := p.mergedAttrs(node)
+	style, err := applyStyleAttributes(inherited, attrs, p.opts.Mode)
+	if err != nil {
+		return err
+	}
+	if !style.Visible {
+		return nil
+	}
+
+	transform := parentTransform
+	if raw := strings.TrimSpace(attrs["transform"]); raw != "" {
+		m, err := parseTransform(raw)
+		if err != nil {
+			return err
+		}
+		transform = m.Then(transform)
+	}
+
+	if node.Name == "use" {
+		id, err := parseURLRef(attrs["href"])
+		if err != nil {
+			return err
+		}
+		target := p.ids[id]
+		if target == nil {
+			return fmt.Errorf("mask use reference %q not found", id)
+		}
+		vw := p.scene.ViewBox.W
+		if vw <= 0 {
+			vw = 300
+		}
+		vh := p.scene.ViewBox.H
+		if vh <= 0 {
+			vh = 150
+		}
+		tx, _ := parseAttrLength(attrs, "x", vw, 0)
+		ty, _ := parseAttrLength(attrs, "y", vh, 0)
+		return p.walkMaskNode(target, style, model.Translate(tx, ty).Then(transform), out)
+	}
+
+	path, ok, err := elementPath(node.Name, attrs, p.scene.ViewBox, p.opts.CurveTolerance)
+	if err != nil {
+		return err
+	}
+	if ok && len(path.Subpaths) > 0 {
+		path = transformPath(path, transform)
+		cmdStyle := style
+		scaleStrokeStyle(&cmdStyle, transform.ApproxScale())
+		if err := p.resolvePaintDependencies(&cmdStyle); err != nil && p.opts.Mode == ParseStrict {
+			return err
+		}
+		*out = append(*out, model.Command{
+			Path:  path,
+			Style: cmdStyle,
+		})
+	}
+
+	for _, child := range node.Children {
+		if err := p.walkMaskNode(child, style, transform, out); err != nil {
+			return err
+		}
+	}
+	return nil
 }
